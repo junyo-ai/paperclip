@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1.20
-FROM node:24-trixie-slim AS base
+# syntax disabled for airgap
+FROM junyo-registry.cn-shenzhen.cr.aliyuncs.com/third-party/library/node:24-trixie-slim AS base
 ARG USER_UID=1000
 ARG USER_GID=1000
 RUN apt-get update \
@@ -42,7 +42,15 @@ COPY packages/adapters/openclaw-gateway/package.json packages/adapters/openclaw-
 COPY packages/adapters/opencode-local/package.json packages/adapters/opencode-local/
 COPY packages/adapters/pi-local/package.json packages/adapters/pi-local/
 COPY packages/plugins/sdk/package.json packages/plugins/sdk/
-COPY --parents packages/plugins/sandbox-providers/./*/package.json packages/plugins/sandbox-providers/
+COPY packages/plugins/sandbox-providers/boxd/package.json packages/plugins/sandbox-providers/boxd/
+COPY packages/plugins/sandbox-providers/cloudflare/package.json packages/plugins/sandbox-providers/cloudflare/
+COPY packages/plugins/sandbox-providers/createos/package.json packages/plugins/sandbox-providers/createos/
+COPY packages/plugins/sandbox-providers/daytona/package.json packages/plugins/sandbox-providers/daytona/
+COPY packages/plugins/sandbox-providers/e2b/package.json packages/plugins/sandbox-providers/e2b/
+COPY packages/plugins/sandbox-providers/exe-dev/package.json packages/plugins/sandbox-providers/exe-dev/
+COPY packages/plugins/sandbox-providers/kubernetes/package.json packages/plugins/sandbox-providers/kubernetes/
+COPY packages/plugins/sandbox-providers/modal/package.json packages/plugins/sandbox-providers/modal/
+COPY packages/plugins/sandbox-providers/novita/package.json packages/plugins/sandbox-providers/novita/
 COPY packages/plugins/paperclip-plugin-fake-sandbox/package.json packages/plugins/paperclip-plugin-fake-sandbox/
 COPY packages/plugins/plugin-llm-wiki/package.json packages/plugins/plugin-llm-wiki/
 COPY packages/plugins/plugin-workspace-diff/package.json packages/plugins/plugin-workspace-diff/
@@ -58,6 +66,7 @@ COPY server/src/services/copilot-connection-probe.ts server/src/services/
 RUN pnpm install --resolution-only --ignore-scripts --no-frozen-lockfile && pnpm install --frozen-lockfile
 
 FROM base AS rust-toolchain
+RUN sed -i "s|http://deb.debian.org|https://mirrors.aliyun.com|g; s|http://security.debian.org|https://mirrors.aliyun.com|g" /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list 2>/dev/null || true
 WORKDIR /app
 # Debian's packaged rust lags the ecosystem (trixie ships 1.85) and the
 # runner's dependency tree now requires a newer rustc. Install rustup from a
@@ -75,6 +84,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 ARG RUSTUP_VERSION=1.29.0
+# CN mirror for rustup dist (static.rust-lang.org is slow/unstable from cn-shenzhen)
+ARG RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
 ARG RUSTUP_SHA256_AMD64=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
 ARG RUSTUP_SHA256_ARM64=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792
 RUN set -eux; \
@@ -84,7 +95,7 @@ RUN set -eux; \
       arm64) rustTarget="aarch64-unknown-linux-gnu"; sha256="$RUSTUP_SHA256_ARM64" ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
-    curl -fsSLo /tmp/rustup-init "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustTarget}/rustup-init"; \
+    curl -fsSLo /tmp/rustup-init "${RUSTUP_DIST_SERVER}/rustup/archive/${RUSTUP_VERSION}/${rustTarget}/rustup-init"; \
     echo "${sha256}  /tmp/rustup-init" | sha256sum -c -; \
     chmod +x /tmp/rustup-init; \
     /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain none; \
@@ -111,7 +122,9 @@ COPY packages/paperclip-runner/rust-toolchain.toml ../
 # The recipe changes only when dependency manifests, the lockfile, or target
 # metadata change. Source edits can reuse this compiled dependency layer.
 COPY --from=runner-plan /tmp/runner-recipe.json /tmp/runner-recipe.json
-RUN cargo chef cook --release --locked --package paperclip-runner-core --bin paperclip-runnerd --recipe-path /tmp/runner-recipe.json \
+RUN mkdir -p /usr/local/cargo/ \
+      && printf "[source.crates-io]\nreplace-with = \"rsproxy-sparse\"\n[source.rsproxy-sparse]\nregistry = \"sparse+https://rsproxy.cn/index/\"\n[registries.rsproxy]\nindex = \"sparse+https://rsproxy.cn/index/\"\n[net]\ngit-fetch-with-cli = true\n" > /usr/local/cargo/config.toml \
+      && cargo chef cook --release --locked --package paperclip-runner-core --bin paperclip-runnerd --recipe-path /tmp/runner-recipe.json \
   && find . -mindepth 1 -maxdepth 1 ! -name target -exec rm -rf {} +
 
 FROM runner-deps AS runner-build
@@ -146,11 +159,8 @@ RUN pnpm --filter @paperclipai/plugin-sdk build
 # next RUN as an environment variable. The production stage below declares the
 # same ARG again for the runtime fallback; an ARG goes out of scope at the
 # end of its stage. Empty for local `docker build`, which then writes no stamp.
-# NODE_OPTIONS covers the Node build steps. tsc is a native binary and ignores it.
 ENV NODE_OPTIONS=--max-old-space-size=4096
-# The image needs no declarations, and CI type-checks this source separately.
-# Emitting without either cuts the tsc step from more than 10 GiB to about 2.5 GiB.
-RUN PAPERCLIP_TSC_EMIT_ONLY=1 pnpm --filter @paperclipai/server build
+RUN pnpm --filter @paperclipai/server build
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 RUN pnpm --filter @paperclipai/server build:runtime \
   && test -f server/dist-runtime/index.mjs || (echo "ERROR: server runtime bundle missing" && exit 1)

@@ -1204,16 +1204,49 @@ describe("secret routes", () => {
       expect(JSON.stringify(res.body)).not.toContain("sk-env-mirror");
     });
 
-    it("returns an empty mirror for company admins without the operator opt-in", async () => {
+    it("reports nothing and creates nothing for company admins without the operator opt-in", async () => {
       stubProviderEnv({ ANTHROPIC_API_KEY: "sk-env-mirror" });
+      mockSecretService.list.mockResolvedValue([]);
 
       const res = await request(createApp())
         .post("/api/companies/company-1/secrets/environment-provider-keys");
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ keys: [] });
-      expect(mockSecretService.list).not.toHaveBeenCalled();
       expect(mockSecretService.create).not.toHaveBeenCalled();
+      expect(mockSecretService.rotate).not.toHaveBeenCalled();
+    });
+
+    it("reports an existing mirror's metadata without creating or rotating it", async () => {
+      stubProviderEnv({
+        ANTHROPIC_API_KEY: "sk-env-mirror",
+        ANTHROPIC_BASE_URL: "https://env.example.test/api",
+        ANTHROPIC_MODEL: "glm-test",
+      });
+      // An instance operator mirrored the key into this company earlier; the
+      // admin reusing it still needs the endpoint metadata in the hire.
+      mockSecretService.list.mockResolvedValue([{
+        id: "env-secret-1",
+        companyId: "company-1",
+        key: "anthropic_api_key.setup.server_env",
+        status: "active",
+      }]);
+
+      const res = await request(createApp())
+        .post("/api/companies/company-1/secrets/environment-provider-keys");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        keys: [{
+          envKey: "ANTHROPIC_API_KEY",
+          secretId: "env-secret-1",
+          baseUrl: "https://env.example.test/api",
+          model: "glm-test",
+        }],
+      });
+      expect(mockSecretService.create).not.toHaveBeenCalled();
+      expect(mockSecretService.rotate).not.toHaveBeenCalled();
+      expect(JSON.stringify(res.body)).not.toContain("sk-env-mirror");
     });
 
     it("mirrors for company admins when the operator opted in", async () => {

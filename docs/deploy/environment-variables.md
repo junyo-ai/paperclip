@@ -186,7 +186,7 @@ configuration fails closed.
 | `PAPERCLIP_SECRETS_MASTER_KEY` | (from file) | 32-byte encryption key (base64/hex/raw) |
 | `PAPERCLIP_SECRETS_MASTER_KEY_FILE` | `~/.paperclip/.../secrets/master.key` | Path to key file |
 | `PAPERCLIP_SECRETS_STRICT_MODE` | `false` | Require secret refs for sensitive env vars |
-| `PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS` | `false` | Let company admins mirror the server's provider keys (`ANTHROPIC_API_KEY` and peers) into their company's secrets for onboarding; instance admins can always do this |
+| `PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS` | `false` | Let company admins create/rotate mirrors of the server's provider keys (`ANTHROPIC_API_KEY` and peers) in their company's secrets; instance admins can always mirror, and every company admin can read an existing mirror's endpoint metadata |
 
 ## Agent Runtime (Injected into agent processes)
 

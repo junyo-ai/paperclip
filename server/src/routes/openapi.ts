@@ -5446,11 +5446,12 @@ registry.registerPath({
   summary:
     "Mirror provider API keys from the server environment into company secrets for onboarding",
   description:
-    "Requires a board actor with company secret-admin rights. Only instance "
-    + "operators can mirror the server process's provider keys; company admins "
-    + "receive an empty key list unless the operator opted in with "
-    + "PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS. The response lists mirrored secret "
-    + "ids and endpoint metadata only — it never carries credential values.",
+    "Requires a board actor with company secret-admin rights. Creating or "
+    + "rotating a mirror of the server process's provider keys is restricted "
+    + "to instance operators, or to deployments where the operator set "
+    + "PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS; every caller can read the metadata "
+    + "of mirrors that already exist. The response lists mirrored secret ids "
+    + "and endpoint metadata only — it never carries credential values.",
   request: { params: z.object({ companyId: z.string() }) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
 });

@@ -964,18 +964,19 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
   //
   // Authorization stays with the instance: pulling the server process's
   // credentials into a company must not be reachable by that company's own
-  // admins alone. Instance operators keep their access; company admins see an
-  // empty mirror unless the operator opted in via
-  // PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS, and onboarding falls back to its
-  // usual credential paths.
+  // admins alone. Writing a mirror — creating or rotating one — remains with
+  // instance operators and deployments whose operator opted in via
+  // PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS. Reading is broader: a company admin
+  // reusing a mirror an operator already left in the company needs its
+  // endpoint metadata, or the hire would send the mirrored key to the
+  // hardcoded host and pin a model that endpoint does not serve. Read-only
+  // callers get metadata for mirrors that already exist and nothing else —
+  // and no credential value is read or returned either way.
   router.post("/companies/:companyId/secrets/environment-provider-keys", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertSecretDefinitionAdmin(req, companyId);
     const instanceOperator = req.actor.source === "local_implicit" || Boolean(req.actor.isInstanceAdmin);
-    if (!instanceOperator && !environmentProviderKeysExposed()) {
-      res.json({ keys: [] });
-      return;
-    }
+    const canMirror = instanceOperator || environmentProviderKeysExposed();
     const actor = { userId: req.actor.userId ?? "board", agentId: null };
 
     const existingByKey = new Map(
@@ -990,60 +991,64 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
       if (!value) continue;
       const secretKey = `${envKey}.SETUP.SERVER_ENV`;
       let secretId: string | undefined = existingByKey.get(secretKey)?.id;
-      if (secretId) {
-        try {
-          const resolved = await svc.resolveEnvBindings(companyId, {
-            [envKey]: { type: "secret_ref", secretId, version: "latest" },
-          });
-          if (resolved.env[envKey] !== value) {
-            await svc.rotate(secretId, { value }, actor);
+      if (canMirror) {
+        if (secretId) {
+          try {
+            const resolved = await svc.resolveEnvBindings(companyId, {
+              [envKey]: { type: "secret_ref", secretId, version: "latest" },
+            });
+            if (resolved.env[envKey] !== value) {
+              await svc.rotate(secretId, { value }, actor);
+              await logActivity(db, {
+                companyId,
+                actorType: "user",
+                actorId: actor.userId,
+                action: "secret.rotated",
+                entityType: "secret",
+                entityId: secretId,
+                details: { name: `${envKey} · server environment`, provider: defaultProvider },
+              });
+            }
+          } catch {
+            // A mirror that cannot be resolved right now keeps its stored value;
+            // the next successful sync re-checks it.
+          }
+        } else {
+          try {
+            const created = await svc.create(
+              companyId,
+              {
+                name: `${envKey} · server environment`,
+                key: secretKey,
+                provider: defaultProvider,
+                value,
+                description: "Provider credential mirrored from the server environment.",
+              },
+              actor,
+            );
+            secretId = created.id;
             await logActivity(db, {
               companyId,
               actorType: "user",
               actorId: actor.userId,
-              action: "secret.rotated",
+              action: "secret.created",
               entityType: "secret",
-              entityId: secretId,
-              details: { name: `${envKey} · server environment`, provider: defaultProvider },
+              entityId: created.id,
+              details: { name: created.name, provider: created.provider },
             });
+          } catch (error) {
+            // Two clients syncing concurrently: the create that lost the
+            // duplicate-key race adopts the winner's secret.
+            if (!(error instanceof HttpError) || error.status !== 409) throw error;
+            secretId = (await svc.list(companyId)).find(
+              (secret) => secret.status === "active" && secret.key.toUpperCase() === secretKey,
+            )?.id;
+            if (!secretId) throw error;
           }
-        } catch {
-          // A mirror that cannot be resolved right now keeps its stored value;
-          // the next successful sync re-checks it.
-        }
-      } else {
-        try {
-          const created = await svc.create(
-            companyId,
-            {
-              name: `${envKey} · server environment`,
-              key: secretKey,
-              provider: defaultProvider,
-              value,
-              description: "Provider credential mirrored from the server environment.",
-            },
-            actor,
-          );
-          secretId = created.id;
-          await logActivity(db, {
-            companyId,
-            actorType: "user",
-            actorId: actor.userId,
-            action: "secret.created",
-            entityType: "secret",
-            entityId: created.id,
-            details: { name: created.name, provider: created.provider },
-          });
-        } catch (error) {
-          // Two clients syncing concurrently: the create that lost the
-          // duplicate-key race adopts the winner's secret.
-          if (!(error instanceof HttpError) || error.status !== 409) throw error;
-          secretId = (await svc.list(companyId)).find(
-            (secret) => secret.status === "active" && secret.key.toUpperCase() === secretKey,
-          )?.id;
-          if (!secretId) throw error;
         }
       }
+      // A read-only caller reports the mirrors that already exist, never makes one.
+      if (!secretId) continue;
       const baseUrl =
         envKey === "ANTHROPIC_API_KEY"
           ? environmentBaseUrl(process.env.ANTHROPIC_BASE_URL)

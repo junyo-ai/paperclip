@@ -105,6 +105,10 @@ RUN set -eux; \
 COPY packages/paperclip-runner/rust-toolchain.toml /tmp/runner-toolchain/rust-toolchain.toml
 RUN cd /tmp/runner-toolchain && rustup show
 
+# CN: rsproxy must be configured BEFORE any cargo network op — cargo-chef install
+# (rust-chef stage) runs before the runner-deps layer that used to own this.
+RUN printf "[source.crates-io]\nreplace-with = \"rsproxy-sparse\"\n[source.rsproxy-sparse]\nregistry = \"sparse+https://rsproxy.cn/index/\"\n[registries.rsproxy]\nindex = \"sparse+https://rsproxy.cn/index/\"\n[net]\ngit-fetch-with-cli = true\n" > /usr/local/cargo/config.toml
+
 # Pin the recipe generator and its dependency lockfile. It is a build-only tool
 # and uses the same package-owned compiler as both native build stages.
 FROM rust-toolchain AS rust-chef

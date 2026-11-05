@@ -2095,16 +2095,27 @@ function OnboardingWizardInner({
     // endpoint — and the model the operator pinned for it, since a default
     // Claude model name need not exist there — into the configuration the
     // hire sends, so claude targets the operator's endpoint rather than the
-    // hardcoded one, unless this config already names its own.
-    if (adapterType === "claude_local" && credentialMode === "api" && savedKeys.environment) {
+    // hardcoded one, unless this config already names its own. Only when the
+    // hire actually uses that key: sending the operator's endpoint with a
+    // different key would route that key to the operator's host, and the
+    // pinned model need not exist for it. A typed key and a managed
+    // connection carry no secret reference, so they are excluded here.
+    const environmentKey = savedKeys.environment;
+    const usesEnvironmentKey = Boolean(
+      environmentKey
+      && typeof selectedApiKey?.binding === "object"
+      && selectedApiKey.binding.type === "secret_ref"
+      && selectedApiKey.binding.secretId === environmentKey.secretId,
+    );
+    if (adapterType === "claude_local" && credentialMode === "api" && environmentKey && usesEnvironmentKey) {
       const env = isEnvRecord(config.env) ? { ...(config.env as Record<string, unknown>) } : {};
       let envCarried = false;
-      if (savedKeys.environment.baseUrl && !env.ANTHROPIC_BASE_URL) {
-        env.ANTHROPIC_BASE_URL = { type: "plain", value: savedKeys.environment.baseUrl };
+      if (environmentKey.baseUrl && !env.ANTHROPIC_BASE_URL) {
+        env.ANTHROPIC_BASE_URL = { type: "plain", value: environmentKey.baseUrl };
         envCarried = true;
       }
-      if (savedKeys.environment.model && !env.ANTHROPIC_MODEL && !model.trim()) {
-        env.ANTHROPIC_MODEL = { type: "plain", value: savedKeys.environment.model };
+      if (environmentKey.model && !env.ANTHROPIC_MODEL && !model.trim()) {
+        env.ANTHROPIC_MODEL = { type: "plain", value: environmentKey.model };
         envCarried = true;
       }
       if (envCarried) config.env = env;

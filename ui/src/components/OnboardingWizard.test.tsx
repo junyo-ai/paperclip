@@ -165,7 +165,7 @@ const mockSecretsApi = vi.hoisted(() => ({
   createUserSecretDefinition: vi.fn(),
   createMyUserSecret: vi.fn(),
   rotateMyUserSecret: vi.fn(),
-  syncEnvironmentProviderKeys: vi.fn(async () => ({ keys: [] })),
+  syncEnvironmentProviderKeys: vi.fn(async () => ({ keys: [] as import("../api/secrets").EnvironmentProviderKey[] })),
 }));
 const mockIssuesApi = vi.hoisted(() => ({
   create: vi.fn(),
@@ -1060,6 +1060,77 @@ describe("OnboardingWizard restore-gate (stale localStorage across accounts)", (
       expect(mockSecretsApi.createMyUserSecret).not.toHaveBeenCalled();
       expect(mockSecretsApi.rotateMyUserSecret).not.toHaveBeenCalled();
       await act(async () => root.unmount());
+    });
+
+    // The operator's endpoint belongs to the operator's key. Carrying it into
+    // a hire that uses a different credential would send that credential to
+    // the operator's host — and pin a model that need not exist for it.
+    describe("a server-environment provider key", () => {
+      const ENV_BASE_URL = "https://operator.example.test/api";
+      const ENV_MODEL = "glm-4.5-air";
+
+      beforeEach(() => {
+        mockSecretsApi.syncEnvironmentProviderKeys.mockResolvedValue({
+          keys: [{
+            envKey: "ANTHROPIC_API_KEY",
+            secretId: "env-mirror-secret",
+            baseUrl: ENV_BASE_URL,
+            model: ENV_MODEL,
+          }],
+        });
+        mockSecretsApi.list.mockResolvedValue([{
+          id: "env-mirror-secret",
+          companyId: "company-new",
+          key: "ANTHROPIC_API_KEY.SETUP.SERVER_ENV",
+          name: "ANTHROPIC_API_KEY · server environment",
+          scope: "company",
+          status: "active",
+        }]);
+      });
+
+      it("carries the operator endpoint and model when that key is the one hired", async () => {
+        const { root, clickByText } = await openConnectStep();
+        const picker = document.body.querySelector('select[aria-label="Saved API key"]') as HTMLSelectElement;
+        expect(picker.value).toBe("company:env-mirror-secret");
+
+        await clickByText((t) => isArcPrimary(t));
+
+        expect((mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[1]).toMatchObject({
+          adapterConfig: {
+            env: {
+              ANTHROPIC_API_KEY: { type: "secret_ref", secretId: "env-mirror-secret", version: "latest" },
+              ANTHROPIC_BASE_URL: { type: "plain", value: ENV_BASE_URL },
+              ANTHROPIC_MODEL: { type: "plain", value: ENV_MODEL },
+            },
+          },
+        });
+
+        await act(async () => root.unmount());
+      });
+
+      it("does not route the customer's own saved key to the operator endpoint", async () => {
+        mockSecretsApi.listMyUserSecrets.mockResolvedValue([{
+          definition: { id: "own-key", companyId: "company-new", key: "ANTHROPIC_API_KEY", name: "Own key", status: "active" },
+          secret: { companyId: "company-new", status: "active" },
+        }]);
+
+        const { root, clickByText } = await openConnectStep();
+        const picker = document.body.querySelector('select[aria-label="Saved API key"]') as HTMLSelectElement;
+        // The customer's own key wins the default; the operator's mirror is
+        // present in the same list, which is exactly the mix that must not
+        // borrow the operator's endpoint.
+        expect(picker.value).toBe("user:own-key");
+
+        await clickByText((t) => isArcPrimary(t));
+
+        const hireBody = (mockAgentsApi.hire.mock.calls.at(-1) as unknown[])[1] as { adapterConfig: { env?: Record<string, unknown> } };
+        expect(hireBody.adapterConfig.env?.ANTHROPIC_API_KEY).toEqual({ type: "user_secret_ref", key: "ANTHROPIC_API_KEY", version: "latest" });
+        expect(hireBody.adapterConfig.env?.ANTHROPIC_BASE_URL).toBeUndefined();
+        expect(hireBody.adapterConfig.env?.ANTHROPIC_MODEL).toBeUndefined();
+        expect(JSON.stringify(hireBody)).not.toContain(ENV_BASE_URL);
+
+        await act(async () => root.unmount());
+      });
     });
 
     describe("an API key typed on the step", () => {

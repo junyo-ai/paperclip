@@ -34,6 +34,7 @@ const secrets = vi.hoisted(() => ({
   createMyUserSecret: vi.fn(),
   rotateMyUserSecret: vi.fn(),
   removeUserSecretDefinition: vi.fn(),
+  syncEnvironmentProviderKeys: vi.fn(async () => ({ keys: [] })),
 }));
 const state = vi.hoisted(() => ({
   params: new URLSearchParams(),

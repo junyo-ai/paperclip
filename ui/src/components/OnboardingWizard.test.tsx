@@ -165,6 +165,7 @@ const mockSecretsApi = vi.hoisted(() => ({
   createUserSecretDefinition: vi.fn(),
   createMyUserSecret: vi.fn(),
   rotateMyUserSecret: vi.fn(),
+  syncEnvironmentProviderKeys: vi.fn(async () => ({ keys: [] })),
 }));
 const mockIssuesApi = vi.hoisted(() => ({
   create: vi.fn(),

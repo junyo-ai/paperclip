@@ -2089,6 +2089,26 @@ function OnboardingWizardInner({
       env[apiKeyEnvKeyFor(adapterType)] = selectedApiKey?.binding ?? apiKeySecretRef.current?.binding;
       config.env = env;
     }
+    // A server-environment key comes from an operator who pointed this
+    // deployment at an Anthropic-compatible endpoint (Zhipu GLM and the
+    // like) because api.anthropic.com is unreachable from it. Carry that
+    // endpoint — and the model the operator pinned for it, since a default
+    // Claude model name need not exist there — into the configuration the
+    // hire sends, so claude targets the operator's endpoint rather than the
+    // hardcoded one, unless this config already names its own.
+    if (adapterType === "claude_local" && credentialMode === "api" && savedKeys.environment) {
+      const env = isEnvRecord(config.env) ? { ...(config.env as Record<string, unknown>) } : {};
+      let envCarried = false;
+      if (savedKeys.environment.baseUrl && !env.ANTHROPIC_BASE_URL) {
+        env.ANTHROPIC_BASE_URL = { type: "plain", value: savedKeys.environment.baseUrl };
+        envCarried = true;
+      }
+      if (savedKeys.environment.model && !env.ANTHROPIC_MODEL && !model.trim()) {
+        env.ANTHROPIC_MODEL = { type: "plain", value: savedKeys.environment.model };
+        envCarried = true;
+      }
+      if (envCarried) config.env = env;
+    }
     if (credentialMode === "subscription" && savedSubscription?.binding && !(savedConfig.env as Record<string, unknown> | undefined)?.CODEX_HOME) {
       config.env = { ...((config.env as object) ?? {}), CODEX_HOME: savedSubscription.binding };
     }
@@ -3102,6 +3122,15 @@ function OnboardingWizardInner({
                           setSelectedSavedKey(createdCompanyId ? { companyId: createdCompanyId, envKey: apiKeyEnvKeyFor(adapterType), id } : null);
                           setApiKey("");
                         }} />}
+                        {savedKeys.environment && typeof selectedApiKey?.binding === "object"
+                          && selectedApiKey.binding.type === "secret_ref"
+                          && selectedApiKey.binding.secretId === savedKeys.environment.secretId && (
+                          <p className="text-sm text-muted-foreground">
+                            This key was provided by the server environment{savedKeys.environment.baseUrl
+                              ? ` and targets ${savedKeys.environment.baseUrl}`
+                              : ""}.
+                          </p>
+                        )}
                         {!selectedApiKey && !hasGatewaySelection && !connectionModels && <OnboardingCardField
                           label="API key"
                           placeholder="Enter API key here"

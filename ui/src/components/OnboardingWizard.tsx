@@ -2089,6 +2089,37 @@ function OnboardingWizardInner({
       env[apiKeyEnvKeyFor(adapterType)] = selectedApiKey?.binding ?? apiKeySecretRef.current?.binding;
       config.env = env;
     }
+    // A server-environment key comes from an operator who pointed this
+    // deployment at an Anthropic-compatible endpoint (Zhipu GLM and the
+    // like) because api.anthropic.com is unreachable from it. Carry that
+    // endpoint — and the model the operator pinned for it, since a default
+    // Claude model name need not exist there — into the configuration the
+    // hire sends, so claude targets the operator's endpoint rather than the
+    // hardcoded one, unless this config already names its own. Only when the
+    // hire actually uses that key: sending the operator's endpoint with a
+    // different key would route that key to the operator's host, and the
+    // pinned model need not exist for it. A typed key and a managed
+    // connection carry no secret reference, so they are excluded here.
+    const environmentKey = savedKeys.environment;
+    const usesEnvironmentKey = Boolean(
+      environmentKey
+      && typeof selectedApiKey?.binding === "object"
+      && selectedApiKey.binding.type === "secret_ref"
+      && selectedApiKey.binding.secretId === environmentKey.secretId,
+    );
+    if (adapterType === "claude_local" && credentialMode === "api" && environmentKey && usesEnvironmentKey) {
+      const env = isEnvRecord(config.env) ? { ...(config.env as Record<string, unknown>) } : {};
+      let envCarried = false;
+      if (environmentKey.baseUrl && !env.ANTHROPIC_BASE_URL) {
+        env.ANTHROPIC_BASE_URL = { type: "plain", value: environmentKey.baseUrl };
+        envCarried = true;
+      }
+      if (environmentKey.model && !env.ANTHROPIC_MODEL && !model.trim()) {
+        env.ANTHROPIC_MODEL = { type: "plain", value: environmentKey.model };
+        envCarried = true;
+      }
+      if (envCarried) config.env = env;
+    }
     if (credentialMode === "subscription" && savedSubscription?.binding && !(savedConfig.env as Record<string, unknown> | undefined)?.CODEX_HOME) {
       config.env = { ...((config.env as object) ?? {}), CODEX_HOME: savedSubscription.binding };
     }
@@ -3102,6 +3133,15 @@ function OnboardingWizardInner({
                           setSelectedSavedKey(createdCompanyId ? { companyId: createdCompanyId, envKey: apiKeyEnvKeyFor(adapterType), id } : null);
                           setApiKey("");
                         }} />}
+                        {savedKeys.environment && typeof selectedApiKey?.binding === "object"
+                          && selectedApiKey.binding.type === "secret_ref"
+                          && selectedApiKey.binding.secretId === savedKeys.environment.secretId && (
+                          <p className="text-sm text-muted-foreground">
+                            This key was provided by the server environment{savedKeys.environment.baseUrl
+                              ? ` and targets ${savedKeys.environment.baseUrl}`
+                              : ""}.
+                          </p>
+                        )}
                         {!selectedApiKey && !hasGatewaySelection && !connectionModels && <OnboardingCardField
                           label="API key"
                           placeholder="Enter API key here"

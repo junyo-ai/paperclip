@@ -30,7 +30,7 @@ vi.mock("@/api/agents", () => ({
   },
 }));
 vi.mock("@/api/secrets", () => ({
-  secretsApi: { listMyUserSecrets: mocks.personal, list: mocks.organization },
+  secretsApi: { listMyUserSecrets: mocks.personal, list: mocks.organization, syncEnvironmentProviderKeys: vi.fn(async () => ({ keys: [] })) },
 }));
 vi.mock("../AgentConfigForm", () => ({
   AdapterLoginPanel: (props: unknown) => { mocks.loginPanel(props); return <div>New subscription login</div>; },

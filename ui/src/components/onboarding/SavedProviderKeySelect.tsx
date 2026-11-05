@@ -1,6 +1,6 @@
 import { aiConnectionsApi } from "@/api/ai-connections";
 import type { AiProvider } from "@paperclipai/shared";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi } from "@/api/agents";
 import { ApiError } from "@/api/client";
 import { secretsApi } from "@/api/secrets";
@@ -17,6 +17,7 @@ export function useSavedProviderKeys(
   envKey: string,
   enabled = true,
 ) {
+  const queryClient = useQueryClient();
   const provider = ({ ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "openai", OPENROUTER_API_KEY: "openrouter", XAI_API_KEY: "xai", GEMINI_API_KEY: "google" } as Record<string, AiProvider>)[envKey];
   const managed = useQuery({
     queryKey: ["ai-connections", companyId],
@@ -34,6 +35,22 @@ export function useSavedProviderKeys(
   const organization = useQuery({
     queryKey: queryKeys.secrets.list(companyId ?? ""),
     queryFn: () => secretsApi.list(companyId!),
+    enabled: Boolean(companyId) && enabled,
+    retry: false,
+  });
+  // The server can hold a provider key in its own environment (CN /
+  // air-gapped deployments with an Anthropic-compatible endpoint, where an
+  // OAuth sign-in to anthropic.com can never complete). Syncing mirrors it
+  // into a company secret, so the organization list above picks it up as a
+  // saved option — and a deployment with no such key just gets an empty
+  // result and keeps its usual credential modes.
+  const environment = useQuery({
+    queryKey: ["environment-provider-keys", companyId ?? ""],
+    queryFn: async () => {
+      const result = await secretsApi.syncEnvironmentProviderKeys(companyId!);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(companyId!) });
+      return result;
+    },
     enabled: Boolean(companyId) && enabled,
     retry: false,
   });
@@ -64,8 +81,12 @@ export function useSavedProviderKeys(
       companyId ?? "",
       organization.data ?? [],
     ) : [])],
+    environment: environment.data?.keys.find((key) => key.envKey === envKey) ?? null,
     // Background refreshes must not unmount an active login panel sharing this query.
-    loading: personal.isLoading || organization.isLoading || storedLogin.isLoading || managed.isLoading,
+    loading: personal.isLoading || organization.isLoading || storedLogin.isLoading || managed.isLoading || environment.isLoading,
+    // A sync this viewer cannot run (e.g. a non-admin member) is not a failure
+    // to load saved keys — an env key mirrored by an admin still arrives via
+    // the organization list.
     error: personal.isError || organization.isError || managed.isError,
   };
 }

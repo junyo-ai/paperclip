@@ -60,6 +60,15 @@ function environmentBaseUrl(raw: string | undefined): string | null {
   }
 }
 
+/**
+ * Mirroring the server process's own credentials into a company's secrets is
+ * an instance-operator decision. Company admins only get a mirror when the
+ * operator explicitly opted in with PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS.
+ */
+function environmentProviderKeysExposed(): boolean {
+  return ["1", "true"].includes(process.env.PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS ?? "");
+}
+
 function proposalListPage(query: Record<string, unknown>) {
   const rawLimit = query.limit;
   const rawOffset = query.offset;
@@ -952,9 +961,21 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
   // rotates the mirror when the environment it shadows changes. The response
   // never includes a credential value; the base URL is operator
   // configuration, not a secret.
+  //
+  // Authorization stays with the instance: pulling the server process's
+  // credentials into a company must not be reachable by that company's own
+  // admins alone. Instance operators keep their access; company admins see an
+  // empty mirror unless the operator opted in via
+  // PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS, and onboarding falls back to its
+  // usual credential paths.
   router.post("/companies/:companyId/secrets/environment-provider-keys", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertSecretDefinitionAdmin(req, companyId);
+    const instanceOperator = req.actor.source === "local_implicit" || Boolean(req.actor.isInstanceAdmin);
+    if (!instanceOperator && !environmentProviderKeysExposed()) {
+      res.json({ keys: [] });
+      return;
+    }
     const actor = { userId: req.actor.userId ?? "board", agentId: null };
 
     const existingByKey = new Map(

@@ -1,6 +1,6 @@
 import express from "express";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { secretRoutes } from "../routes/secrets.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { HttpError, unprocessable } from "../errors.js";
@@ -1135,6 +1135,112 @@ describe("secret routes", () => {
       })).get("/api/companies/company-1/secrets/catalog");
 
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe("POST /companies/:companyId/secrets/environment-provider-keys", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    // Deterministic even on hosts that hold real provider credentials.
+    function stubProviderEnv(overrides: Record<string, string> = {}) {
+      const defaults = {
+        ANTHROPIC_API_KEY: "",
+        OPENAI_API_KEY: "",
+        OPENROUTER_API_KEY: "",
+        XAI_API_KEY: "",
+        GEMINI_API_KEY: "",
+        GROQ_API_KEY: "",
+        ANTHROPIC_BASE_URL: "",
+        ANTHROPIC_MODEL: "",
+        PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS: "",
+      };
+      for (const [key, value] of Object.entries({ ...defaults, ...overrides })) {
+        vi.stubEnv(key, value);
+      }
+    }
+
+    const companyAdmin = {
+      type: "board",
+      userId: "user-1",
+      source: "session",
+      companyIds: ["company-1"],
+      memberships: [{ companyId: "company-1", status: "active", membershipRole: "admin" }],
+    };
+
+    it("mirrors server environment keys for instance admins", async () => {
+      stubProviderEnv({
+        ANTHROPIC_API_KEY: "sk-env-mirror",
+        ANTHROPIC_BASE_URL: "https://env.example.test/api",
+        ANTHROPIC_MODEL: "glm-test",
+      });
+      mockSecretService.list.mockResolvedValue([]);
+      mockSecretService.create.mockResolvedValue({
+        id: "env-secret-1",
+        companyId: "company-1",
+        key: "anthropic_api_key.setup.server_env",
+        status: "active",
+      });
+
+      const res = await request(createApp({ ...companyAdmin, isInstanceAdmin: true }))
+        .post("/api/companies/company-1/secrets/environment-provider-keys");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        keys: [{
+          envKey: "ANTHROPIC_API_KEY",
+          secretId: "env-secret-1",
+          baseUrl: "https://env.example.test/api",
+          model: "glm-test",
+        }],
+      });
+      expect(mockSecretService.create).toHaveBeenCalledWith(
+        "company-1",
+        expect.objectContaining({ key: "ANTHROPIC_API_KEY.SETUP.SERVER_ENV", value: "sk-env-mirror" }),
+        { userId: "user-1", agentId: null },
+      );
+      // The response is metadata for onboarding; the credential never echoes back.
+      expect(JSON.stringify(res.body)).not.toContain("sk-env-mirror");
+    });
+
+    it("returns an empty mirror for company admins without the operator opt-in", async () => {
+      stubProviderEnv({ ANTHROPIC_API_KEY: "sk-env-mirror" });
+
+      const res = await request(createApp())
+        .post("/api/companies/company-1/secrets/environment-provider-keys");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ keys: [] });
+      expect(mockSecretService.list).not.toHaveBeenCalled();
+      expect(mockSecretService.create).not.toHaveBeenCalled();
+    });
+
+    it("mirrors for company admins when the operator opted in", async () => {
+      stubProviderEnv({ ANTHROPIC_API_KEY: "sk-env-mirror", PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS: "1" });
+      mockSecretService.list.mockResolvedValue([]);
+      mockSecretService.create.mockResolvedValue({ id: "env-secret-1", status: "active" });
+
+      const res = await request(createApp())
+        .post("/api/companies/company-1/secrets/environment-provider-keys");
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        keys: [{ envKey: "ANTHROPIC_API_KEY", secretId: "env-secret-1", baseUrl: null, model: null }],
+      });
+      expect(mockSecretService.create).toHaveBeenCalledOnce();
+    });
+
+    it("rejects company members outright", async () => {
+      stubProviderEnv({ ANTHROPIC_API_KEY: "sk-env-mirror" });
+
+      const res = await request(createApp({
+        ...companyAdmin,
+        memberships: [{ companyId: "company-1", status: "active", membershipRole: "member" }],
+      })).post("/api/companies/company-1/secrets/environment-provider-keys");
+
+      expect(res.status).toBe(403);
+      expect(mockSecretService.create).not.toHaveBeenCalled();
     });
   });
 });

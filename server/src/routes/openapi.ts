@@ -1525,6 +1525,7 @@ const BOARD_ONLY_OPERATIONS = new Set([
   "DELETE /api/companies/{companyId}/me/user-secrets/{secretId}",
   "POST /api/companies/{companyId}/secrets/remote-import",
   "POST /api/companies/{companyId}/secrets/remote-import/preview",
+  "POST /api/companies/{companyId}/secrets/environment-provider-keys",
   "GET /api/secrets/{id}/usage",
   "GET /api/secrets/{id}/access-events",
   "POST /api/health/dev-server/restart",
@@ -5444,6 +5445,12 @@ registry.registerPath({
   tags: ["secrets"],
   summary:
     "Mirror provider API keys from the server environment into company secrets for onboarding",
+  description:
+    "Requires a board actor with company secret-admin rights. Only instance "
+    + "operators can mirror the server process's provider keys; company admins "
+    + "receive an empty key list unless the operator opted in with "
+    + "PAPERCLIP_EXPOSE_ENV_PROVIDER_KEYS. The response lists mirrored secret "
+    + "ids and endpoint metadata only — it never carries credential values.",
   request: { params: z.object({ companyId: z.string() }) },
   responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
 });

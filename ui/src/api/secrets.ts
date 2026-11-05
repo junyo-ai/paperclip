@@ -147,6 +147,18 @@ export interface SecretProviderConfigDiscoveryPreviewInput {
   pageSize?: number;
 }
 
+/** A provider API key the server process holds in its environment. */
+export interface EnvironmentProviderKey {
+  envKey: string;
+  secretId: string;
+  baseUrl: string | null;
+  model: string | null;
+}
+
+export interface EnvironmentProviderKeysResponse {
+  keys: EnvironmentProviderKey[];
+}
+
 export const secretsApi = {
   list: (companyId: string) => api.get<CompanySecret[]>(`/companies/${companyId}/secrets`),
   providers: (companyId: string) =>
@@ -234,6 +246,13 @@ export const secretsApi = {
     ),
   remoteImport: (companyId: string, data: RemoteImportInput) =>
     api.post<RemoteSecretImportResult>(`/companies/${companyId}/secrets/remote-import`, data),
+  // Idempotent: mirrors the server environment's provider keys into company
+  // secrets so they appear as saved options. Never returns key values.
+  syncEnvironmentProviderKeys: (companyId: string) =>
+    api.post<EnvironmentProviderKeysResponse>(
+      `/companies/${companyId}/secrets/environment-provider-keys`,
+      {},
+    ),
 
   // --- Secret & binding proposals (PAP-14731) -----------------------------
   // Board-facing review surface. Agents propose credentials/bindings; humans

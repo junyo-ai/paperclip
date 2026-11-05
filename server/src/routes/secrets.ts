@@ -20,7 +20,7 @@ import { assertBoard, assertBoardOrAgent, assertCompanyAccess, getAccessibleReso
 import { logActivity, secretService } from "../services/index.js";
 import { createSecretProposalsService } from "../services/secret-proposals.js";
 import { getConfiguredSecretProvider } from "../secrets/configured-provider.js";
-import { forbidden, notFound, unauthorized, unprocessable } from "../errors.js";
+import { forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { authorizationDeniedDetails } from "../services/authorization.js";
 import { accessService } from "../services/access.js";
 import { heartbeatService } from "../services/heartbeat.js";
@@ -37,6 +37,28 @@ type SecretRoutesDeps = {
 
 const DEFAULT_PROPOSAL_LIST_LIMIT = 100;
 const MAX_PROPOSAL_LIST_LIMIT = 200;
+
+/** Provider API-key env vars the server process may hold for its companies. */
+const ENVIRONMENT_PROVIDER_ENV_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "XAI_API_KEY",
+  "GEMINI_API_KEY",
+  "GROQ_API_KEY",
+] as const;
+
+/** An http(s) base URL passes through; anything else is ignored. */
+function environmentBaseUrl(raw: string | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 function proposalListPage(query: Record<string, unknown>) {
   const rawLimit = query.limit;
@@ -916,6 +938,106 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
     });
 
     res.status(201).json(created);
+  });
+
+  // Server-environment provider credentials (CN / air-gapped deployments).
+  //
+  // An operator can hand the server process an Anthropic-compatible API key
+  // (with an optional ANTHROPIC_BASE_URL, e.g. Zhipu GLM) through its
+  // environment. OAuth to anthropic.com is unreachable from such hosts, so
+  // onboarding has no credential path at all unless this key is surfaced where
+  // the wizard looks for saved provider keys. The route mirrors each
+  // recognized env key into a company secret — a reference the existing
+  // saved-key, binding, and resolution machinery already understands — and
+  // rotates the mirror when the environment it shadows changes. The response
+  // never includes a credential value; the base URL is operator
+  // configuration, not a secret.
+  router.post("/companies/:companyId/secrets/environment-provider-keys", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertSecretDefinitionAdmin(req, companyId);
+    const actor = { userId: req.actor.userId ?? "board", agentId: null };
+
+    const existingByKey = new Map(
+      (await svc.list(companyId))
+        .filter((secret) => secret.status === "active")
+        .map((secret) => [secret.key.toUpperCase(), secret]),
+    );
+
+    const keys = [];
+    for (const envKey of ENVIRONMENT_PROVIDER_ENV_KEYS) {
+      const value = process.env[envKey]?.trim();
+      if (!value) continue;
+      const secretKey = `${envKey}.SETUP.SERVER_ENV`;
+      let secretId: string | undefined = existingByKey.get(secretKey)?.id;
+      if (secretId) {
+        try {
+          const resolved = await svc.resolveEnvBindings(companyId, {
+            [envKey]: { type: "secret_ref", secretId, version: "latest" },
+          });
+          if (resolved.env[envKey] !== value) {
+            await svc.rotate(secretId, { value }, actor);
+            await logActivity(db, {
+              companyId,
+              actorType: "user",
+              actorId: actor.userId,
+              action: "secret.rotated",
+              entityType: "secret",
+              entityId: secretId,
+              details: { name: `${envKey} · server environment`, provider: defaultProvider },
+            });
+          }
+        } catch {
+          // A mirror that cannot be resolved right now keeps its stored value;
+          // the next successful sync re-checks it.
+        }
+      } else {
+        try {
+          const created = await svc.create(
+            companyId,
+            {
+              name: `${envKey} · server environment`,
+              key: secretKey,
+              provider: defaultProvider,
+              value,
+              description: "Provider credential mirrored from the server environment.",
+            },
+            actor,
+          );
+          secretId = created.id;
+          await logActivity(db, {
+            companyId,
+            actorType: "user",
+            actorId: actor.userId,
+            action: "secret.created",
+            entityType: "secret",
+            entityId: created.id,
+            details: { name: created.name, provider: created.provider },
+          });
+        } catch (error) {
+          // Two clients syncing concurrently: the create that lost the
+          // duplicate-key race adopts the winner's secret.
+          if (!(error instanceof HttpError) || error.status !== 409) throw error;
+          secretId = (await svc.list(companyId)).find(
+            (secret) => secret.status === "active" && secret.key.toUpperCase() === secretKey,
+          )?.id;
+          if (!secretId) throw error;
+        }
+      }
+      const baseUrl =
+        envKey === "ANTHROPIC_API_KEY"
+          ? environmentBaseUrl(process.env.ANTHROPIC_BASE_URL)
+          : null;
+      // The operator may also pin the model the Anthropic-compatible
+      // endpoint serves (e.g. a GLM id), because a default Claude model name
+      // need not exist there.
+      const model =
+        envKey === "ANTHROPIC_API_KEY"
+          ? process.env.ANTHROPIC_MODEL?.trim() || null
+          : null;
+      keys.push({ envKey, secretId, baseUrl, model });
+    }
+
+    res.json({ keys });
   });
 
   router.post(

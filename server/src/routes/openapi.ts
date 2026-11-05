@@ -5439,6 +5439,16 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "post",
+  path: "/api/companies/{companyId}/secrets/environment-provider-keys",
+  tags: ["secrets"],
+  summary:
+    "Mirror provider API keys from the server environment into company secrets for onboarding",
+  request: { params: z.object({ companyId: z.string() }) },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 403: r.forbidden },
+});
+
+registry.registerPath({
   method: "get",
   path: "/api/companies/{companyId}/secret-proposals",
   tags: ["secrets"],

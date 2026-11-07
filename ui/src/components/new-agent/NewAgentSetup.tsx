@@ -1,3 +1,4 @@
+import { createUuid } from "@/lib/uuid";
 import { ACCOUNT_BOUND_MODEL_DISCOVERY_QUERY_OPTIONS } from "@/lib/native-model-catalog";
 import { PAPERCLIP_RUNNER_ACPX_PROFILES } from "@paperclipai/adapter-utils";
 import { ExternalAgentInviteDialog } from "./ExternalAgentInviteDialog";
@@ -196,7 +197,7 @@ function Setup({
   const [repository, setRepository] = useState("");
   const [branch, setBranch] = useState("");
   const [createdInSession, setCreated] = useState<Agent | null>(null);
-  const setupId = useRef(setupAgentId ?? crypto.randomUUID());
+  const setupId = useRef(setupAgentId ?? createUuid());
   if (setupAgentId) setupId.current = setupAgentId;
   const creating = useRef(false);
   const restored = useRef<string | null>(null);

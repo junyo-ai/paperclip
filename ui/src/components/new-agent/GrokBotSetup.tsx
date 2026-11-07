@@ -1,3 +1,4 @@
+import { createUuid } from "@/lib/uuid";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateGrokInvitation, DotPairing, GrokInvitation } from "@paperclipai/shared";
@@ -61,7 +62,7 @@ export function GrokBotSetup({ companyId, companyName, onBack, onClose }: {
   }, gcTime: 0 });
   const verify = useMutation({ mutationFn: async () => {
     if (["rejected", "cancelled"].includes(binding?.routine?.lastExchange?.status ?? "")) verifyRequest.current = null;
-    verifyRequest.current ??= crypto.randomUUID();
+    verifyRequest.current ??= createUuid();
     await grokBotApi.verify(companyId, invitation!.agent.id, binding!.id, verifyRequest.current);
     await connection.refetch();
   }, gcTime: 0 });

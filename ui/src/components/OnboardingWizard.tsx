@@ -1,3 +1,4 @@
+import { createUuid } from "@/lib/uuid";
 import type { AgentRunner, AgentRunnerChoice } from "@paperclipai/shared";
 import { needsClaudeSetupQualification, qualifyClaudeSetup } from "../lib/qualify-claude-setup";
 import { agentHarnessType } from "@paperclipai/shared";
@@ -1286,7 +1287,7 @@ function OnboardingWizardInner({
       || (!sourceSelected && setupNameConflict === JSON.stringify([createdCompanyId, agentName.trim().toLowerCase()]))) return;
     const companyId = createdCompanyId;
     preparingSetup.current.add(companyId);
-    const id = setupAgentId ?? crypto.randomUUID();
+    const id = setupAgentId ?? createUuid();
     let restoring = Boolean(setupAgentId);
     void (async () => {
       if (!setupAgentId) {

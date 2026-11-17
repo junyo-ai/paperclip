@@ -408,13 +408,13 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Copied from the deps stage as their own layer, a commit that leaves the
 # lockfile alone does not push or pull them again. The build stage writes
 # nothing under the root node_modules, so the rest of /app is copied without it.
-COPY --chown=node:node --from=deps /app/node_modules /app/node_modules
 # CN: buildkit v0.17 builtin frontend lacks COPY --exclude (needs 1.7-labs
-# syntax, which the airgap constraint forbids). Copy everything, then strip
-# node_modules in the same layer — the layer cache keys on the whole /app
-# either way, so the size story matches the original intent.
+# syntax, which the airgap constraint forbids). Copy the build output first,
+# then restore the deps node_modules on top of it — the build stage writes
+# nothing under the root node_modules, so the deps layer wins and the symlink
+# store (.pnpm) survives. The layer cache keys on the whole /app either way.
 COPY --chown=node:node --from=build /app /app
-RUN rm -rf /app/node_modules
+COPY --chown=node:node --from=deps /app/node_modules /app/node_modules
 
 # Large provider binaries first, linked so the layer does not depend on the
 # per-commit /app layer above; then the small per-commit remainder of the pack.

@@ -333,7 +333,13 @@ author and propose, the board owns the lifecycle.
     hash, not the request replay.
 - `install-seeds` upserts by `(companyId, key)`: an existing live row with
   the same key is never overwritten; the response reports
-  `installed` vs `alreadyPresent` per key.
+  `installed` vs `alreadyPresent` per key. **Exception — gapped-seed
+  recovery**: if the existing live row is `deprecated` with
+  `deprecationReason = "missing-skills: ..."` (installed with gaps, §5.5)
+  and the missing skills now all resolve, the retry **updates that row**
+  (clears the deprecation, republishes as a new version). This is the only
+  path that overwrites a live row, and it is gated on the recorded gap
+  reason so ordinary seeds keep the no-overwrite rule.
 
 ### 5.4 Lifecycle
 

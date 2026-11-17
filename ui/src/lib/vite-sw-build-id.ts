@@ -85,11 +85,19 @@ export function serviceWorkerBuildIdPlugin(
     },
     closeBundle() {
       const swPath = path.resolve(root, outDir, serviceWorkerFileName);
-      const source = fs.readFileSync(swPath, "utf8");
+      // CN(rolldown-vite 8): the publicDir copy can run after plugin closeBundle,
+      // so dist/sw.js may not exist yet. Fall back to the verbatim public asset
+      // and write the stamped result to dist ourselves.
+      const publicSwPath = path.resolve(root, "public", serviceWorkerFileName);
+      const source = fs.readFileSync(
+        fs.existsSync(swPath) ? swPath : publicSwPath,
+        "utf8",
+      );
       const css = fs.readFileSync(path.resolve(root, "src/index.css"), "utf8");
       const stamped = stampServiceWorkerBuildId(
         embedServiceWorkerOfflineStyles(source, css), buildId ?? "build",
       );
+      fs.mkdirSync(path.dirname(swPath), { recursive: true });
       fs.writeFileSync(swPath, stamped);
     },
   };

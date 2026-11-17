@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 import { createUuid } from "@/lib/uuid";
-=======
 import { describeError } from "@/api/errors";
->>>>>>> upstream/master
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateGrokInvitation, DotPairing, GrokInvitation } from "@paperclipai/shared";

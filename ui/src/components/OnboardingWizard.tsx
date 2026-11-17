@@ -1,10 +1,7 @@
-<<<<<<< HEAD
 import { createUuid } from "@/lib/uuid";
-=======
 import type { AiConnectionLoginIntent } from "@paperclipai/shared";
 import { cancelAdapterLoginSession, cancelPendingAdapterLogin, matchesAdapterLoginTarget } from "./useAdapterLoginCancellation";
 import { useQueryView } from "@/components/QueryView";
->>>>>>> upstream/master
 import type { AgentRunner, AgentRunnerChoice } from "@paperclipai/shared";
 import { needsClaudeSetupQualification, qualifyClaudeSetup } from "../lib/qualify-claude-setup";
 import { runOnboardingConnectionTest } from "../lib/onboarding-connection-test";

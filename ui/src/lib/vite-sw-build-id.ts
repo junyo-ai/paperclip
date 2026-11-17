@@ -85,6 +85,14 @@ export function serviceWorkerBuildIdPlugin(
     },
     closeBundle() {
       const swPath = path.resolve(root, outDir, serviceWorkerFileName);
+      // rolldown-vite (vite 8) can invoke closeBundle more than once. After the
+      // first pass the worker is already stamped; re-stamping would throw.
+      if (fs.existsSync(swPath)) {
+        const current = fs.readFileSync(swPath, "utf8");
+        if (!current.includes(SERVICE_WORKER_BUILD_ID_PLACEHOLDER)) {
+          return;
+        }
+      }
       // CN(rolldown-vite 8): the publicDir copy can run after plugin closeBundle,
       // so dist/sw.js may not exist yet. Fall back to the verbatim public asset
       // and write the stamped result to dist ourselves.

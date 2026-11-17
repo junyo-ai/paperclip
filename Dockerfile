@@ -144,7 +144,8 @@ COPY packages/shared/src/provider-failure.generated.ts /packages/shared/src/
 # here also runs on trixie. The pack copies this Node binary as its own
 # interpreter, which is why the exact Node release is pinned and part of the
 # image identity. The digest is the multi-platform index (amd64 and arm64).
-FROM node:24.22.3-bookworm@sha256:9d266751ca3d7fdbe651c878ffd5ad0a42fed49a18c283509267c97f025b7496 AS runner-artifacts-node
+# CN: pinned node pulled via regctl into ACR (docker.io unreachable from cn-shenzhen)
+FROM junyo-registry.cn-shenzhen.cr.aliyuncs.com/third-party/library/node:24.22.3-bookworm AS runner-artifacts-node
 RUN corepack enable
 
 # The image identity, computed inside the build from the files the build

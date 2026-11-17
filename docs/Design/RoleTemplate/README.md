@@ -339,7 +339,13 @@ author and propose, the board owns the lifecycle.
   and the missing skills now all resolve, the retry **updates that row**
   (clears the deprecation, republishes as a new version). This is the only
   path that overwrites a live row, and it is gated on the recorded gap
-  reason so ordinary seeds keep the no-overwrite rule.
+  reason so ordinary seeds keep the no-overwrite rule. The recovery update
+  is **atomic and conditional**: it re-checks the gap state inside the same
+  transaction (`UPDATE ... WHERE id = $1 AND deprecation_reason LIKE
+  'missing-skills:%'` — row-locked compare-and-swap); if a concurrent
+  board `restore`/edit/publish changed the row meanwhile, the conditional
+  update matches 0 rows and the seed reports `conflict` for that key
+  instead of overwriting the edited row.
 
 ### 5.4 Lifecycle
 

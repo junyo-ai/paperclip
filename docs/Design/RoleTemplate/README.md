@@ -325,6 +325,12 @@ author and propose, the board owns the lifecycle.
   convention as other company-scoped create routes.
 - `publish`/`deprecate`/`restore` are naturally idempotent state transitions:
   re-invoking in the target state returns `200` with the current row.
+  - **Publish after an edit is NOT a retry**: `publish` on a `published` row
+    whose `workingSpec` hash differs from `publishedSpec` creates version
+    **N+1** (§4.1, §5.4 flow). A publish call on a `published` row with an
+    **unchanged** spec is the only no-op: returns `200` with the current
+    version, no new row. The comparison key is the `workingSpec` content
+    hash, not the request replay.
 - `install-seeds` upserts by `(companyId, key)`: an existing live row with
   the same key is never overwritten; the response reports
   `installed` vs `alreadyPresent` per key.
@@ -372,7 +378,14 @@ publish — §6.5), so publish is a fast gate, not the only one.
 - `seedRoleTemplates(companyId, db)` in
   `server/src/services/role-template-seed.ts` upserts both as **published
   version 1** rows (`sourceIssueId` set from the provenance issues) and is
-  idempotent by key.
+  idempotent by key. **Skill-resolution gate**: if the company lacks any
+  catalog skill referenced by a seed, the seed for that template is still
+  installed but lands in `deprecated` status with `deprecationReason =
+  "missing-skills: <keys>"`; `install-seeds` reports `installedWithGaps` for
+  such keys. Re-running `install-seeds` after the missing skills are
+  installed re-publishes the row (same upsert path). Hire-time validation
+  (§6) remains the hard gate — a gapped template can never produce an agent
+  until its skills resolve.
 - New companies: invoked from company creation alongside onboarding seeding.
   Existing companies: the board-only `install-seeds` endpoint (§5.1). No
   automatic migration backfill — template installation stays an explicit
@@ -426,6 +439,18 @@ sequenceDiagram
 Principle: **explicit caller value wins; template fills the gaps; schema
 defaults apply last.** `undefined` in the request means "not specified"
 (templates apply); explicitly provided values always override.
+
+**`role` reads from the RAW request body, before schema defaults.**
+`validate()` replaces `req.body` with the parsed output, and
+`createAgentSchema` defaults an omitted `role` to `"general"` — so by the
+time the handler sees `body.role`, "caller omitted" and "caller sent
+`general`" are indistinguishable. Resolution therefore reads `role` from the
+pre-validation raw body (`req.rawBody` captured by a pre-validate
+diddleware): raw `role` present → caller wins; raw `role` absent → template
+`character.role` applies; both absent → schema default `"general"`. The same
+rule covers `createAgentHireSchema` (inherits the default). Other defaulted
+fields with template sources (`budgetMonthlyCents`) use the same raw-body
+check.
 
 | `createAgentSchema` field | Template source | Rule when caller also sets it |
 |---|---|---|

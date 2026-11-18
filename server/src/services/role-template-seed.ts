@@ -1,8 +1,9 @@
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { roleTemplates, roleTemplateVersions, type Db, type RoleTemplate } from "@paperclipai/db";
 import { roleTemplateSpecSchema, type RoleTemplateSpec } from "@paperclipai/shared";
+import { isUniqueViolation } from "../db-errors.js";
 import { companySkillService } from "./company-skills.js";
-import { logActivity } from "./activity-log.js";
+import { logActivity, publishActivity, type ActivityPublication } from "./activity-log.js";
 import { missingRoleTemplateSkillKeys, type RoleTemplateAuditActor } from "./role-template-store.js";
 import contentMarketingSeed from "../role-template-seeds/content-marketing-specialist-v1.json" with { type: "json" };
 import softwareEngineerSeed from "../role-template-seeds/software-engineer-v1.json" with { type: "json" };
@@ -83,7 +84,8 @@ async function installSeed(
       };
     } catch (error) {
       // A concurrent install won the insert race; treat the row as present.
-      if (!(error instanceof Error && "code" in error && (error as { code?: string }).code === "23505")) {
+      // Drizzle wraps the driver error, so 23505 arrives via the cause chain.
+      if (!isUniqueViolation(error)) {
         throw error;
       }
     }
@@ -95,8 +97,13 @@ async function installSeed(
   }
 
   // The only overwrite path: recovery of a row this installer previously
-  // parked as gapped, gated on the recorded gap reason.
-  const isGapped = row.status === "deprecated" && (row.deprecationReason ?? "").startsWith(GAPPED_REASON_PREFIX);
+  // parked as gapped. The `seed` origin proves installer ownership — a
+  // board-authored template whose deprecation reason merely looks like a gap
+  // marker is never eligible.
+  const isGapped =
+    row.origin === "seed" &&
+    row.status === "deprecated" &&
+    (row.deprecationReason ?? "").startsWith(GAPPED_REASON_PREFIX);
   if (!isGapped) {
     return { key, outcome: "already_present", templateId: row.id, missingSkillKeys: [] };
   }
@@ -120,14 +127,18 @@ async function insertSeedRow(
   spec: RoleTemplateSpec,
   missingSkillKeys: string[],
 ): Promise<RoleTemplate> {
-  return db.transaction(async (tx) => {
+  // Buffered until the transaction commits so subscribers never see a create
+  // event for a row that rolled back.
+  const publications: ActivityPublication[] = [];
+  const template = await db.transaction(async (tx) => {
     const now = new Date();
-    const [template] = await tx
+    const [row] = await tx
       .insert(roleTemplates)
       .values({
         companyId,
         key,
         name: spec.templateName,
+        origin: "seed",
         // A gapped seed still installs version 1, but only a resolved registry
         // can make it hireable.
         status: missingSkillKeys.length > 0 ? "deprecated" : "published",
@@ -140,7 +151,7 @@ async function insertSeedRow(
       })
       .returning();
     await tx.insert(roleTemplateVersions).values({
-      templateId: template.id,
+      templateId: row.id,
       companyId,
       version: 1,
       spec,
@@ -156,9 +167,9 @@ async function insertSeedRow(
       agentApiKeyId: actor.agentApiKeyId ?? null,
       action: "role_template.created",
       entityType: "role_template",
-      entityId: template.id,
+      entityId: row.id,
       details: { key, seed: true, withGaps: missingSkillKeys.length > 0 || undefined },
-    });
+    }, publications);
     await logActivity(tx as unknown as Db, {
       companyId,
       actorType: actor.actorType,
@@ -168,11 +179,13 @@ async function insertSeedRow(
       agentApiKeyId: actor.agentApiKeyId ?? null,
       action: "role_template.published",
       entityType: "role_template",
-      entityId: template.id,
+      entityId: row.id,
       details: { key, seed: true, version: 1, withGaps: missingSkillKeys.length > 0 || undefined },
-    });
-    return template;
+    }, publications);
+    return row;
   });
+  for (const publication of publications) publishActivity(publication);
+  return template;
 }
 
 /**
@@ -189,7 +202,8 @@ async function recoverGappedSeed(
   row: RoleTemplate,
   spec: RoleTemplateSpec,
 ): Promise<RoleTemplateSeedResult> {
-  return db.transaction(async (tx) => {
+  const publications: ActivityPublication[] = [];
+  const result = await db.transaction(async (tx) => {
     // Re-check skill resolution inside the same transaction.
     const stillMissing = await missingRoleTemplateSkillKeys(
       tx as unknown as Db,
@@ -197,7 +211,7 @@ async function recoverGappedSeed(
       spec.skills.map((skill) => skill.key),
     );
     if (stillMissing.length > 0) {
-      return { key: row.key, outcome: "already_present", templateId: row.id, missingSkillKeys: stillMissing };
+      return { key: row.key, outcome: "already_present" as const, templateId: row.id, missingSkillKeys: stillMissing };
     }
 
     const [updated] = await tx
@@ -216,6 +230,9 @@ async function recoverGappedSeed(
         and(
           eq(roleTemplates.id, row.id),
           eq(roleTemplates.companyId, companyId),
+          // Installer-owned rows only: the seed origin plus the recorded gap
+          // reason together authorize the overwrite.
+          eq(roleTemplates.origin, "seed"),
           isNull(roleTemplates.deletedAt),
           like(roleTemplates.deprecationReason, `${GAPPED_REASON_PREFIX}%`),
         ),
@@ -223,7 +240,7 @@ async function recoverGappedSeed(
       .returning();
     if (!updated) {
       // The row changed between the read and the CAS: never overwrite it.
-      return { key: row.key, outcome: "conflict", templateId: row.id, missingSkillKeys: [] };
+      return { key: row.key, outcome: "conflict" as const, templateId: row.id, missingSkillKeys: [] };
     }
 
     await tx.insert(roleTemplateVersions).values({
@@ -245,7 +262,9 @@ async function recoverGappedSeed(
       entityType: "role_template",
       entityId: updated.id,
       details: { key: updated.key, seed: true, version: updated.currentVersion, recovery: true },
-    });
-    return { key: updated.key, outcome: "recovered", templateId: updated.id, missingSkillKeys: [] };
+    }, publications);
+    return { key: updated.key, outcome: "recovered" as const, templateId: updated.id, missingSkillKeys: [] };
   });
+  for (const publication of publications) publishActivity(publication);
+  return result;
 }

@@ -118,12 +118,11 @@ export function resolveTemplateIntoAgentCreate(
     budgetMonthlyCents = typeof body.budgetMonthlyCents === "number" ? body.budgetMonthlyCents : 0;
   }
 
-  // desiredSkills: union merge, caller wins per key. Core defaults are still
-  // appended downstream by withDefaultRoleSkillSelections.
+  // desiredSkills: union merge, caller wins per key. Caller selections come
+  // first so a caller pin (e.g. by UUID) survives downstream alias
+  // deduplication, which keeps whichever entry resolves first. Core defaults
+  // are still appended downstream by withDefaultRoleSkillSelections.
   const mergedSkills = new Map<string, { key: string; versionId: string | null }>();
-  for (const skill of spec.skills) {
-    mergedSkills.set(skill.key, { key: skill.key, versionId: null });
-  }
   if (body.desiredSkills !== undefined) {
     callerOverrides.push("desiredSkills");
     for (const selection of body.desiredSkills) {
@@ -131,6 +130,11 @@ export function resolveTemplateIntoAgentCreate(
         ? { key: selection, versionId: null as string | null }
         : { key: selection.key, versionId: selection.versionId ?? null };
       mergedSkills.set(entry.key, entry);
+    }
+  }
+  for (const skill of spec.skills) {
+    if (!mergedSkills.has(skill.key)) {
+      mergedSkills.set(skill.key, { key: skill.key, versionId: null });
     }
   }
   const desiredSkills = mergedSkills.size > 0 ? Array.from(mergedSkills.values()) : undefined;
@@ -144,11 +148,13 @@ export function resolveTemplateIntoAgentCreate(
     if (body.permissions !== undefined) callerOverrides.push("permissions");
   }
 
-  // instructionsBundle: a caller bundle replaces the persona-derived one wholesale.
+  // instructionsBundle: a caller bundle replaces the persona-derived one
+  // wholesale. An omitted entry file keeps the hire path's AGENTS.md default
+  // (agents.ts uses the same fallback) rather than the first file key.
   let instructionsBundle: ResolvedAgentInstructionsBundle;
   if (body.instructionsBundle !== undefined) {
     instructionsBundle = {
-      entryFile: body.instructionsBundle.entryFile ?? Object.keys(body.instructionsBundle.files)[0]!,
+      entryFile: body.instructionsBundle.entryFile ?? "AGENTS.md",
       files: body.instructionsBundle.files,
     };
     callerOverrides.push("instructionsBundle");

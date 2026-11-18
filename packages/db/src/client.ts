@@ -868,6 +868,7 @@ const MIGRATIONS_WITH_TOP_LEVEL_STATEMENTS = new Set([
   "0486_heartbeat_runs_company_finished_index.sql",
   "0487_heartbeat_runs_settled_process_indexes.sql",
   "0469_zippy_photon.sql",
+  "0490_role_template_agent_index.sql",
 
 
   "0384_funny_adam_warlock.sql",

@@ -25,10 +25,15 @@ export const roleTemplates = pgTable(
   "role_templates",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    // Company deletion removes templates with the company; ordinary template
+    // deletion stays soft so hired agents keep their provenance.
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     name: text("name").notNull(),
     status: text("status").$type<RoleTemplateStatus>().notNull().default("draft"),
+    // Installer provenance: only rows the seed installer created ("seed") are
+    // eligible for gapped-seed recovery; board-authored rows never are.
+    origin: text("origin").$type<"manual" | "seed">().notNull().default("manual"),
     currentVersion: integer("current_version").notNull().default(0),
     workingSpec: jsonb("working_spec").$type<RoleTemplateSpec>().notNull(),
     // Free-text reason recorded on deprecation; the "missing-skills: <keys>"
@@ -67,7 +72,7 @@ export const roleTemplateVersions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     templateId: uuid("template_id").notNull().references(() => roleTemplates.id, { onDelete: "cascade" }),
-    companyId: uuid("company_id").notNull().references(() => companies.id),
+    companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
     spec: jsonb("spec").$type<RoleTemplateSpec>().notNull(),
     changelog: text("changelog"),

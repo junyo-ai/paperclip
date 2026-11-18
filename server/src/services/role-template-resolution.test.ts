@@ -113,10 +113,12 @@ describe("resolveTemplateIntoAgentCreate", () => {
       ],
     };
     const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, body, options);
+    // Caller selections come first so a caller version pin survives downstream
+    // alias deduplication (which keeps whichever entry resolves first).
     expect(merged.desiredSkills).toEqual([
       { key: "paperclipai/paperclip/paperclip", versionId: "version-7" },
-      { key: "paperclipai/paperclip/slack", versionId: null },
       { key: "paperclipai/paperclip/agentmail", versionId: null },
+      { key: "paperclipai/paperclip/slack", versionId: null },
     ]);
     expect(snapshot.callerOverrides).toEqual(["desiredSkills"]);
   });
@@ -141,6 +143,15 @@ describe("resolveTemplateIntoAgentCreate", () => {
       files: { "PERSONA.md": "自拟提示词" },
     });
     expect(snapshot.callerOverrides).toContain("instructionsBundle");
+  });
+
+  it("defaults an omitted caller bundle entry file to AGENTS.md like the hire path", () => {
+    const body: TemplateHireBody = {
+      name: "营销一号",
+      instructionsBundle: { files: { "README.md": "readme", "AGENTS.md": "persona" } },
+    };
+    const { merged } = resolveTemplateIntoAgentCreate(spec, body, options);
+    expect(merged.instructionsBundle.entryFile).toBe("AGENTS.md");
   });
 
   it("records the applied template content and timestamp in the snapshot", () => {

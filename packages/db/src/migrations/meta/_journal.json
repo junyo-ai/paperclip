@@ -3417,6 +3417,13 @@
       "when": 1794961377109,
       "tag": "0489_role_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1795006331429,
+      "tag": "0490_role_template_agent_index",
+      "breakpoints": true
     }
   ]
 }

@@ -4561,27 +4561,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "agents_company_hired_from_template_idx": {
-          "name": "agents_company_hired_from_template_idx",
-          "columns": [
-            {
-              "expression": "company_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "hired_from_template_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -52454,7 +52433,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -52499,6 +52478,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'draft'"
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
         },
         "current_version": {
           "name": "current_version",
@@ -52663,7 +52649,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "role_templates_created_by_agent_id_agents_id_fk": {

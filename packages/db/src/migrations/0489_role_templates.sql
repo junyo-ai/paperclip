@@ -1,4 +1,4 @@
--- paperclip:migration-compat online_compatible: New tables and their indexes are invisible to the previous release; the agents FK is NOT VALID so no scan runs; the one plain index on agents is a narrow two-column btree over a low-cardinality table (one row per agent), built in well under a second while no previous-release query touches these columns.
+-- paperclip:migration-compat online_compatible: New tables and their indexes are invisible to the previous release; the agents FK is NOT VALID so no scan runs; no index is built on live tables here (the agents provenance index lands in 0490 as a concurrent build).
 CREATE TABLE "role_template_create_receipts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
@@ -25,6 +25,7 @@ CREATE TABLE "role_templates" (
 	"key" text NOT NULL,
 	"name" text NOT NULL,
 	"status" text DEFAULT 'draft' NOT NULL,
+	"origin" text DEFAULT 'manual' NOT NULL,
 	"current_version" integer DEFAULT 0 NOT NULL,
 	"working_spec" jsonb NOT NULL,
 	"deprecation_reason" text,
@@ -47,13 +48,12 @@ ALTER TABLE "agents" ADD COLUMN "role_template_snapshot" jsonb;--> statement-bre
 ALTER TABLE "role_template_create_receipts" ADD CONSTRAINT "role_template_create_receipts_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "role_template_create_receipts" ADD CONSTRAINT "role_template_create_receipts_template_id_role_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."role_templates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "role_template_versions" ADD CONSTRAINT "role_template_versions_template_id_role_templates_id_fk" FOREIGN KEY ("template_id") REFERENCES "public"."role_templates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "role_template_versions" ADD CONSTRAINT "role_template_versions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "role_templates" ADD CONSTRAINT "role_templates_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "role_template_versions" ADD CONSTRAINT "role_template_versions_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "role_templates" ADD CONSTRAINT "role_templates_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "role_templates" ADD CONSTRAINT "role_templates_created_by_agent_id_agents_id_fk" FOREIGN KEY ("created_by_agent_id") REFERENCES "public"."agents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "role_template_create_receipts_key_idx" ON "role_template_create_receipts" USING btree ("company_id","key");--> statement-breakpoint
 CREATE UNIQUE INDEX "role_template_versions_template_version_idx" ON "role_template_versions" USING btree ("template_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "role_templates_company_key_live_idx" ON "role_templates" USING btree ("company_id","key") WHERE ("role_templates"."deleted_at" is null);--> statement-breakpoint
 CREATE INDEX "role_templates_company_status_idx" ON "role_templates" USING btree ("company_id","status") WHERE ("role_templates"."deleted_at" is null);--> statement-breakpoint
 CREATE INDEX "role_templates_capability_tags_idx" ON "role_templates" USING gin ("capability_tags");--> statement-breakpoint
-ALTER TABLE "agents" ADD CONSTRAINT "agents_hired_from_template_id_role_templates_id_fk" FOREIGN KEY ("hired_from_template_id") REFERENCES "public"."role_templates"("id") ON DELETE set null ON UPDATE no action NOT VALID;--> statement-breakpoint
-CREATE INDEX "agents_company_hired_from_template_idx" ON "agents" USING btree ("company_id","hired_from_template_id");
+ALTER TABLE "agents" ADD CONSTRAINT "agents_hired_from_template_id_role_templates_id_fk" FOREIGN KEY ("hired_from_template_id") REFERENCES "public"."role_templates"("id") ON DELETE set null ON UPDATE no action NOT VALID;

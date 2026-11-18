@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import {
   companySkills,
   roleTemplateCreateReceipts,
@@ -17,7 +17,8 @@ import {
   type RoleTemplateUpdate,
 } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
-import { logActivity } from "./activity-log.js";
+import { isUniqueViolation } from "../db-errors.js";
+import { logActivity, publishActivity, type ActivityPublication } from "./activity-log.js";
 
 export const ROLE_TEMPLATE_NOT_HIREABLE_CODE = "role_template_not_hireable";
 
@@ -80,6 +81,12 @@ export type RoleTemplateVersionRow = Pick<
   "id" | "version" | "spec" | "changelog" | "createdByUserId" | "createdAt"
 >;
 
+/**
+ * Persist an audit row on `db` (a transaction runner inside lifecycle writes).
+ * Publications are buffered and flushed by the caller only after the
+ * surrounding transaction commits, so subscribers never see an event for a
+ * write that rolled back.
+ */
 async function audit(
   db: Db,
   companyId: string,
@@ -87,19 +94,24 @@ async function audit(
   action: string,
   actor: RoleTemplateAuditActor,
   details: Record<string, unknown>,
+  publications: ActivityPublication[],
 ) {
-  await logActivity(db, {
-    companyId,
-    actorType: actor.actorType,
-    actorId: actor.actorId,
-    agentId: actor.agentId ?? null,
-    runId: actor.runId ?? null,
-    agentApiKeyId: actor.agentApiKeyId ?? null,
-    action,
-    entityType: "role_template",
-    entityId: templateId,
-    details,
-  });
+  await logActivity(
+    db,
+    {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId ?? null,
+      runId: actor.runId ?? null,
+      agentApiKeyId: actor.agentApiKeyId ?? null,
+      action,
+      entityType: "role_template",
+      entityId: templateId,
+      details,
+    },
+    publications,
+  );
 }
 
 export function roleTemplateStore(db: Db) {
@@ -159,7 +171,7 @@ export function roleTemplateStore(db: Db) {
   }
 
   /** Publish gate (design §5.4): spec parses, key is a slug, skills resolve. */
-  async function assertPublishable(companyId: string, row: RoleTemplate): Promise<void> {
+  async function assertPublishable(db: Db, companyId: string, row: RoleTemplate): Promise<void> {
     const invalid: string[] = [];
     const spec = roleTemplateSpecSchema.safeParse(row.workingSpec);
     if (!spec.success) invalid.push(`spec: ${spec.error.issues[0]?.message ?? "invalid spec"}`);
@@ -214,67 +226,77 @@ export function roleTemplateStore(db: Db) {
         );
       }
 
-      let createReceipt: { receiptKey: string; fingerprint: string } | null = null;
-      if (options.idempotencyKey) {
-        const receiptKey = `role-template:${actor.actorType}:${actor.actorId}:${options.idempotencyKey}`;
-        const fingerprint = roleTemplateSpecHash({ key, spec: input.spec, sourceIssueId: input.sourceIssueId ?? null });
-        const [receipt] = await db
-          .select()
-          .from(roleTemplateCreateReceipts)
-          .where(
-            and(
-              eq(roleTemplateCreateReceipts.companyId, companyId),
-              eq(roleTemplateCreateReceipts.key, receiptKey),
-              sql`${roleTemplateCreateReceipts.createdAt} >= now() - interval '24 hours'`,
-            ),
-          )
-          .limit(1);
-        if (receipt) {
-          if (receipt.fingerprint !== fingerprint) {
-            throw conflict("Idempotency key was already used with a different template body");
-          }
-          const [existing] = await db
+      // One transaction, serialized per idempotency key via an advisory lock:
+      // concurrent identical requests replay the winner, a different body for
+      // the same key conflicts, and the draft, receipt and audit row commit
+      // (or roll back) together.
+      const publications: ActivityPublication[] = [];
+      const result = await db.transaction(async (tx) => {
+        let createReceipt: { receiptKey: string; fingerprint: string } | null = null;
+        if (options.idempotencyKey) {
+          const receiptKey = `role-template:${actor.actorType}:${actor.actorId}:${options.idempotencyKey}`;
+          const fingerprint = roleTemplateSpecHash({ key, spec: input.spec, sourceIssueId: input.sourceIssueId ?? null });
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${receiptKey}, 0))`);
+          const [receipt] = await tx
             .select()
-            .from(roleTemplates)
-            .where(eq(roleTemplates.id, receipt.templateId))
+            .from(roleTemplateCreateReceipts)
+            .where(
+              and(
+                eq(roleTemplateCreateReceipts.companyId, companyId),
+                eq(roleTemplateCreateReceipts.key, receiptKey),
+                sql`${roleTemplateCreateReceipts.createdAt} >= now() - interval '24 hours'`,
+              ),
+            )
             .limit(1);
-          if (existing) return { template: existing, replayed: true };
+          if (receipt) {
+            if (receipt.fingerprint !== fingerprint) {
+              throw conflict("Idempotency key was already used with a different template body");
+            }
+            const [existing] = await tx
+              .select()
+              .from(roleTemplates)
+              .where(eq(roleTemplates.id, receipt.templateId))
+              .limit(1);
+            if (existing) return { template: existing, replayed: true };
+          }
+          createReceipt = { receiptKey, fingerprint };
         }
-        createReceipt = { receiptKey, fingerprint };
-      }
 
-      let created: RoleTemplate | null = null;
-      try {
-        [created] = await db
-          .insert(roleTemplates)
-          .values({
-            companyId,
-            key,
-            name: input.spec.templateName,
-            status: "draft",
-            workingSpec: input.spec,
-            sourceIssueId: input.sourceIssueId ?? null,
-            createdByUserId: actor.actorType === "user" ? actor.actorId : null,
-            createdByAgentId: actor.actorType === "agent" ? actor.agentId ?? null : null,
-          })
-          .returning();
-      } catch (error) {
-        // The partial unique index is the race-safe guard; the pre-check above
-        // only exists to keep the common path conflict-free.
-        if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
-          throw conflict(`A live role template with key "${key}" already exists`);
+        let created: RoleTemplate;
+        try {
+          [created] = await tx
+            .insert(roleTemplates)
+            .values({
+              companyId,
+              key,
+              name: input.spec.templateName,
+              status: "draft",
+              workingSpec: input.spec,
+              sourceIssueId: input.sourceIssueId ?? null,
+              createdByUserId: actor.actorType === "user" ? actor.actorId : null,
+              createdByAgentId: actor.actorType === "agent" ? actor.agentId ?? null : null,
+            })
+            .returning();
+        } catch (error) {
+          // The partial unique index is the race-safe guard; the pre-check above
+          // only exists to keep the common path conflict-free.
+          if (isUniqueViolation(error)) {
+            throw conflict(`A live role template with key "${key}" already exists`);
+          }
+          throw error;
         }
-        throw error;
-      }
 
-      if (createReceipt) {
-        await db
-          .insert(roleTemplateCreateReceipts)
-          .values({ companyId, key: createReceipt.receiptKey, fingerprint: createReceipt.fingerprint, templateId: created.id })
-          .onConflictDoNothing();
-      }
-      await audit(db, companyId, created.id, "role_template.created", actor, { key, name: created.name });
-      return { template: created, replayed: false };
+        if (createReceipt) {
+          await tx
+            .insert(roleTemplateCreateReceipts)
+            .values({ companyId, key: createReceipt.receiptKey, fingerprint: createReceipt.fingerprint, templateId: created.id })
+            .onConflictDoNothing();
+        }
+        await audit(tx as unknown as Db, companyId, created.id, "role_template.created", actor, { key, name: created.name }, publications);
+        return { template: created, replayed: false };
+      });
+      for (const publication of publications) publishActivity(publication);
+      return result;
     },
 
     update: async (
@@ -284,21 +306,26 @@ export function roleTemplateStore(db: Db) {
       actor: RoleTemplateAuditActor,
     ): Promise<RoleTemplate> => {
       const row = await requireLiveRow(companyId, templateId);
-      const [updated] = await db
-        .update(roleTemplates)
-        .set({
-          ...(patch.name !== undefined ? { name: patch.name } : {}),
-          ...(patch.spec !== undefined ? { workingSpec: patch.spec, name: patch.spec.templateName } : {}),
-          ...(patch.routerVisible !== undefined ? { routerVisible: patch.routerVisible } : {}),
-          ...(patch.dispatchWeight !== undefined ? { dispatchWeight: patch.dispatchWeight } : {}),
-          ...(patch.capabilityTags !== undefined ? { capabilityTags: patch.capabilityTags } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(roleTemplates.id, row.id))
-        .returning();
-      await audit(db, companyId, updated.id, "role_template.updated", actor, {
-        fields: Object.keys(patch),
+      const publications: ActivityPublication[] = [];
+      const updated = await db.transaction(async (tx) => {
+        const [row2] = await tx
+          .update(roleTemplates)
+          .set({
+            ...(patch.name !== undefined ? { name: patch.name } : {}),
+            ...(patch.spec !== undefined ? { workingSpec: patch.spec, name: patch.spec.templateName } : {}),
+            ...(patch.routerVisible !== undefined ? { routerVisible: patch.routerVisible } : {}),
+            ...(patch.dispatchWeight !== undefined ? { dispatchWeight: patch.dispatchWeight } : {}),
+            ...(patch.capabilityTags !== undefined ? { capabilityTags: patch.capabilityTags } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(roleTemplates.id, row.id))
+          .returning();
+        await audit(tx as unknown as Db, companyId, row2.id, "role_template.updated", actor, {
+          fields: Object.keys(patch),
+        }, publications);
+        return row2;
       });
+      for (const publication of publications) publishActivity(publication);
       return updated;
     },
 
@@ -317,15 +344,24 @@ export function roleTemplateStore(db: Db) {
       if (row.status === "deprecated") {
         throw conflict("Restore the role template before publishing it again");
       }
-      await assertPublishable(companyId, row);
 
-      return db.transaction(async (tx) => {
+      const publications: ActivityPublication[] = [];
+      const result = await db.transaction(async (tx) => {
         const [locked] = await tx
           .select()
           .from(roleTemplates)
           .where(eq(roleTemplates.id, row.id))
           .for("update");
         if (!locked || locked.deletedAt) throw notFound("Role template not found");
+        // Re-check the lifecycle under the lock: a deprecation that committed
+        // after the unlocked read above must not be silently undone.
+        if (locked.status === "deprecated") {
+          throw conflict("Restore the role template before publishing it again");
+        }
+        // Validate the spec that this publish will freeze, under the lock, so
+        // an edit that lands between the unlocked read and this point cannot
+        // smuggle an unpublishable spec into a version row.
+        await assertPublishable(tx as unknown as Db, companyId, locked);
 
         if (locked.currentVersion > 0 && locked.status === "published") {
           const [current] = await tx
@@ -373,7 +409,7 @@ export function roleTemplateStore(db: Db) {
               createdAt: roleTemplateVersions.createdAt,
             });
         } catch (error) {
-          if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
+          if (isUniqueViolation(error)) {
             throw conflict("The role template was published concurrently; retry");
           }
           throw error;
@@ -390,11 +426,15 @@ export function roleTemplateStore(db: Db) {
           })
           .where(eq(roleTemplates.id, locked.id))
           .returning();
-        await audit(db, companyId, updated.id, "role_template.published", actor, {
+        // Audit persists through `tx` (an outer-pool query could deadlock a
+        // single-connection pool) and publishes only after commit.
+        await audit(tx as unknown as Db, companyId, updated.id, "role_template.published", actor, {
           version: nextVersion,
-        });
+        }, publications);
         return { template: updated, version: inserted, createdVersion: true };
       });
+      for (const publication of publications) publishActivity(publication);
+      return result;
     },
 
     deprecate: async (
@@ -406,19 +446,25 @@ export function roleTemplateStore(db: Db) {
       const row = await requireLiveRow(companyId, templateId);
       if (row.status === "draft") throw conflict("Only a published role template can be deprecated");
       if (row.status === "deprecated") return row;
-      const [updated] = await db
-        .update(roleTemplates)
-        .set({
-          status: "deprecated",
-          deprecatedAt: new Date(),
-          deprecationReason: options.reason ?? null,
-          updatedAt: new Date(),
-        })
-        .where(eq(roleTemplates.id, row.id))
-        .returning();
-      await audit(db, companyId, updated.id, "role_template.deprecated", actor, {
-        reason: options.reason ?? null,
+      const publications: ActivityPublication[] = [];
+      const updated = await db.transaction(async (tx) => {
+        const [row2] = await tx
+          .update(roleTemplates)
+          .set({
+            status: "deprecated",
+            deprecatedAt: new Date(),
+            deprecationReason: options.reason ?? null,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(roleTemplates.id, row.id), ne(roleTemplates.status, "draft")))
+          .returning();
+        if (!row2) throw conflict("Only a published role template can be deprecated");
+        await audit(tx as unknown as Db, companyId, row2.id, "role_template.deprecated", actor, {
+          reason: options.reason ?? null,
+        }, publications);
+        return row2;
       });
+      for (const publication of publications) publishActivity(publication);
       return updated;
     },
 
@@ -431,19 +477,25 @@ export function roleTemplateStore(db: Db) {
       const row = await requireLiveRow(companyId, templateId);
       if (row.status === "draft") throw conflict("Publish the role template before restoring it");
       if (row.status === "published") return row;
-      const [updated] = await db
-        .update(roleTemplates)
-        .set({
-          status: "published",
-          deprecatedAt: null,
-          deprecationReason: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(roleTemplates.id, row.id))
-        .returning();
-      await audit(db, companyId, updated.id, "role_template.restored", actor, {
-        version: updated.currentVersion,
+      const publications: ActivityPublication[] = [];
+      const updated = await db.transaction(async (tx) => {
+        const [row2] = await tx
+          .update(roleTemplates)
+          .set({
+            status: "published",
+            deprecatedAt: null,
+            deprecationReason: null,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(roleTemplates.id, row.id), eq(roleTemplates.status, "deprecated")))
+          .returning();
+        if (!row2) throw conflict("Publish the role template before restoring it");
+        await audit(tx as unknown as Db, companyId, row2.id, "role_template.restored", actor, {
+          version: row2.currentVersion,
+        }, publications);
+        return row2;
       });
+      for (const publication of publications) publishActivity(publication);
       return updated;
     },
 
@@ -453,12 +505,21 @@ export function roleTemplateStore(db: Db) {
       if (row.status === "published") {
         throw conflict("Deprecate the role template before deleting it");
       }
-      const [updated] = await db
-        .update(roleTemplates)
-        .set({ deletedAt: new Date(), updatedAt: new Date() })
-        .where(eq(roleTemplates.id, row.id))
-        .returning();
-      await audit(db, companyId, updated.id, "role_template.deleted", actor, { key: updated.key });
+      const publications: ActivityPublication[] = [];
+      const updated = await db.transaction(async (tx) => {
+        // Conditional on a still non-published row: if a publish commits
+        // between the read above and this update, the match is empty instead
+        // of silently deleting a published template.
+        const [row2] = await tx
+          .update(roleTemplates)
+          .set({ deletedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(roleTemplates.id, row.id), ne(roleTemplates.status, "published")))
+          .returning();
+        if (!row2) throw conflict("Deprecate the role template before deleting it");
+        await audit(tx as unknown as Db, companyId, row2.id, "role_template.deleted", actor, { key: row2.key }, publications);
+        return row2;
+      });
+      for (const publication of publications) publishActivity(publication);
       return updated;
     },
 

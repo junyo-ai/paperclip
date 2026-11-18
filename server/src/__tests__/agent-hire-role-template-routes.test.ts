@@ -377,6 +377,43 @@ describeEmbeddedPostgres("template-aware agent hire wiring", () => {
     expect(res.body.error).toContain("setupId");
   });
 
+  it("rejects templateId combined with onboardingFirstAgent on both hire routes", async () => {
+    const company = await seedFixtureCompany(db);
+    await seedCompanySkills(db, company.id);
+    const published = await seedPublishedTemplate(db, company.id);
+    const app = createApp(db, BOARD_ACTOR);
+
+    const direct = await request(app)
+      .post(`/api/companies/${company.id}/agents`)
+      .send({
+        name: "入职专员",
+        templateId: published.template.id,
+        onboardingFirstAgent: true,
+        adapterType: "claude_local",
+      });
+    expect(direct.status, JSON.stringify(direct.body)).toBe(422);
+    expect(direct.body.error).toContain("onboardingFirstAgent");
+
+    const hiringAgent = await seedHiringAgent(db, company.id);
+    const hiresApp = createApp(db, agentActor(company.id, hiringAgent.id));
+    const viaHires = await request(hiresApp)
+      .post(`/api/companies/${company.id}/agent-hires`)
+      .send({
+        name: "入职专员",
+        templateId: published.template.id,
+        onboardingFirstAgent: true,
+        adapterType: "claude_local",
+      });
+    expect(viaHires.status, JSON.stringify(viaHires.body)).toBe(422);
+    expect(viaHires.body.error).toContain("onboardingFirstAgent");
+
+    const templateHires = await db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.companyId, company.id), eq(agents.hiredFromTemplateId, published.template.id)));
+    expect(templateHires).toHaveLength(0);
+  });
+
   it("creates an agent without template provenance when templateId is absent", async () => {
     const company = await seedFixtureCompany(db);
     const app = createApp(db, BOARD_ACTOR);

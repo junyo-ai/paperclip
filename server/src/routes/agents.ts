@@ -4727,6 +4727,11 @@ export function agentRoutes(
         return;
       }
     }
+    if (hireTemplateId && hireOnboardingFirstAgent === true) {
+      throw unprocessable(
+        "templateId cannot be combined with onboardingFirstAgent: the onboarding first agent uses the server-owned chief-of-staff persona, not a role template",
+      );
+    }
     const templateHire = hireTemplateId
       ? await resolveTemplateHire(companyId, hireTemplateId, req)
       : null;
@@ -5089,6 +5094,11 @@ export function agentRoutes(
     if (setupId && createTemplateId) {
       throw unprocessable(
         "templateId cannot be combined with setupId: resolve the template on the request that completes the setup",
+      );
+    }
+    if (createTemplateId && createOnboardingFirstAgent === true) {
+      throw unprocessable(
+        "templateId cannot be combined with onboardingFirstAgent: the onboarding first agent uses the server-owned chief-of-staff persona, not a role template",
       );
     }
     const templateHire = createTemplateId

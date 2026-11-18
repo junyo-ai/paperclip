@@ -121,6 +121,13 @@ export const createAgentSchema = z.object({
   // instruction file instead of the generic default, and honors it only for
   // board-authored requests. Mirrors onboardingFirstTask on issue create.
   onboardingFirstAgent: z.boolean().optional(),
+  // The published role template this hire resolves against (Role Template
+  // design §6.1). It is not an agent column: the server consumes it, merges the
+  // template spec into the create body (caller value wins, template fills the
+  // gaps) and records the applied snapshot as agent provenance. Requires `name`
+  // — an agent's name is instance-specific even when everything else is
+  // templated.
+  templateId: z.string().guid().optional(),
 });
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;

@@ -145,6 +145,13 @@ import {
 } from "../services/index.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
 import { ONBOARDING_FIRST_TASK_SKILL_KEY, PAPERCLIP_CORE_SKILL_KEYS } from "../services/company-skills.js";
+import { roleTemplateStore } from "../services/role-template-store.js";
+import {
+  readTemplateHireRawFields,
+  resolveTemplateIntoAgentCreate,
+  type RoleTemplateSnapshot,
+  type TemplateHireMerge,
+} from "../services/role-template-resolution.js";
 import { createRunSecretRedactionRegistry } from "../services/run-secret-redaction.js";
 import { agentBudgetPage, assertAuthenticated, assertBoard, assertCompanyAccess, COMPANY_BUDGETS_PAGE, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
 import { runAdapterLoginStartSpine } from "./adapter-login-route-spine.js";
@@ -4480,6 +4487,69 @@ export function agentRoutes(
   // adapter-config secret lands in the activity log.
   const hireFingerprint = (body: unknown): string => sha256Digest(body);
 
+  /** A template hire resolved against its published version and merged (design §6.2–6.4). */
+  type ResolvedTemplateHire = {
+    templateId: string;
+    templateKey: string;
+    templateVersion: number;
+    merged: TemplateHireMerge;
+    snapshot: RoleTemplateSnapshot;
+  };
+
+  /**
+   * The pre-validation JSON body, captured by the global JSON parser's verify
+   * hook. `validate()` replaces `req.body` with schema-defaulted output, so
+   * "caller omitted role/budget" is only distinguishable here (design §6.3).
+   */
+  function readRawRequestBody(req: Request): unknown {
+    const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!Buffer.isBuffer(raw) || raw.length === 0) return null;
+    try {
+      return JSON.parse(raw.toString("utf-8"));
+    } catch {
+      return null;
+    }
+  }
+
+  async function resolveTemplateHire(
+    companyId: string,
+    templateId: string,
+    req: Request,
+  ): Promise<ResolvedTemplateHire> {
+    const { template, version, spec } = await roleTemplateStore(db).resolveForHire(companyId, templateId);
+    const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, req.body, {
+      templateKey: template.key,
+      templateVersion: version,
+      raw: readTemplateHireRawFields(readRawRequestBody(req)),
+    });
+    return { templateId: template.id, templateKey: template.key, templateVersion: version, merged, snapshot };
+  }
+
+  async function logRoleTemplateHireApplied(
+    companyId: string,
+    hire: ResolvedTemplateHire,
+    agentId: string,
+    actor: ReturnType<typeof getActorInfo>,
+  ) {
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "role_template.hire_applied",
+      entityType: "role_template",
+      entityId: hire.templateId,
+      details: {
+        templateKey: hire.templateKey,
+        templateVersion: hire.templateVersion,
+        agentId,
+        callerOverrides: hire.snapshot.callerOverrides,
+      },
+    });
+  }
+
   const handleAgentHire = async (req: Request, res: Response) => {
     const companyId = req.params.companyId as string;
     await assertCanCreateAgentsForCompany(req, companyId, { hiring: true });
@@ -4497,11 +4567,15 @@ export function agentRoutes(
     // board approval; the approving operator then activates it.
     if (!company.requireBoardApprovalForNewAgents && req.body.budgetMonthlyCents > 0) assertBoard(req, COMPANY_BUDGETS_PAGE);
     const sourceIssueIds = parseSourceIssueIds(req.body);
-    const {
+    let {
       desiredSkills: requestedDesiredSkills,
       instructionsBundle,
       sourceIssueId: _sourceIssueId,
       sourceIssueIds: _sourceIssueIds,
+      // The role template claim is not an agent column. The server resolves it
+      // against the published version and merges it into the fields below; the
+      // applied snapshot lands on the agent as provenance columns.
+      templateId: hireTemplateId,
       // The stored-session claim is not an agent column. The server derives the
       // owner from the authenticated actor and consumes the claim in the create
       // transaction, so it never reaches the insert values.
@@ -4554,6 +4628,27 @@ export function agentRoutes(
       if (hireInput.adapterConfig && agentHarnessType(hireInput.adapterType ?? "process", hireInput.adapterConfig)
         === agentHarnessType(setupAgent.adapterType, setupAgent.adapterConfig)) {
         hireInput.adapterConfig = restoreRedactedAgentEnv(hireInput.adapterConfig, setupAgent.adapterConfig);
+      }
+    }
+    // Template hire (Role Template design §6): resolve the published version and
+    // merge — explicit caller value wins, template fills the gaps. The agent
+    // carries the resolved snapshot, so later template edits never rewrite it.
+    const templateHire = hireTemplateId
+      ? await resolveTemplateHire(companyId, hireTemplateId, req)
+      : null;
+    if (templateHire) {
+      hireInput.title = templateHire.merged.title;
+      hireInput.role = templateHire.merged.role;
+      hireInput.budgetMonthlyCents = templateHire.merged.budgetMonthlyCents;
+      if (templateHire.merged.permissions !== undefined) {
+        hireInput.permissions = templateHire.merged.permissions;
+      }
+      requestedDesiredSkills = templateHire.merged.desiredSkills ?? requestedDesiredSkills;
+      instructionsBundle = templateHire.merged.instructionsBundle;
+      // A template-sourced budget faces the same board check as a hand-typed
+      // one (design §7); it can never exceed what the caller may set directly.
+      if (!company.requireBoardApprovalForNewAgents && templateHire.merged.budgetMonthlyCents > 0) {
+        assertBoard(req, COMPANY_BUDGETS_PAGE);
       }
     }
     const hiredAgentId = setupAgentId ?? randomUUID();
@@ -4707,13 +4802,21 @@ export function agentRoutes(
           status,
           spentMonthlyCents: 0,
           lastHeartbeatAt: null,
+          // Copy-on-hire provenance (design §6.4): the version pin and the
+          // resolved snapshot, immutable for the agent's lifetime.
+          ...(templateHire ? {
+            hiredFromTemplateId: templateHire.templateId,
+            hiredFromTemplateVersion: templateHire.templateVersion,
+            roleTemplateSnapshot: templateHire.snapshot,
+          } : {}),
         },
         {
           ...(setupAgentId ? { setupAgentId } : {}),
           createdByUserId: req.actor.type === "board" ? req.actor.userId : null,
           createdByAgentId: req.actor.type === "agent" ? req.actor.agentId : null,
           interactionTexts: [JSON.stringify(req.body)],
-          ...(req.actor.type === "board" && req.body.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
+          // Template-sourced budgets count too: hireInput holds the merged value.
+          ...(req.actor.type === "board" && hireInput.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
           runnerResolved: true,
           responsibleUserId: responsibleUserForAiRequest(req),
           aiConnectionInstall: managedHireConnection ? { ...managedHireConnection, createdByUserId: responsibleUserForAiRequest(req) } : undefined,
@@ -4830,6 +4933,9 @@ export function agentRoutes(
           ...(managedHireConnection?.memberConnectionIds ? { aiConnectionPoolId: managedHireConnection.connectionId, aiConnectionMemberInstallIds: managedHireConnection.memberConnectionIds } : {}),
         },
       });
+      if (templateHire) {
+        await logRoleTemplateHireApplied(companyId, templateHire, agent.id, actor);
+      }
       const telemetryClient = getTelemetryClient();
       if (telemetryClient) {
         trackAgentCreated(telemetryClient, { agentRole: agent.role, agentId: agent.id });
@@ -4895,9 +5001,13 @@ export function agentRoutes(
       );
     }
 
-    const {
+    let {
       desiredSkills: requestedDesiredSkills,
       instructionsBundle,
+      // The role template claim is not an agent column. The server resolves it
+      // against the published version and merges it into the fields below; the
+      // applied snapshot lands on the agent as provenance columns.
+      templateId: createTemplateId,
       // The stored-session claim is not an agent column. The server derives the
       // owner from the authenticated actor and consumes the claim in the create
       // transaction, so it never reaches the insert values.
@@ -4912,6 +5022,25 @@ export function agentRoutes(
       runner: createRunner,
       ...createInput
     } = req.body;
+    // Template hire (Role Template design §6): resolve the published version and
+    // merge — explicit caller value wins, template fills the gaps. The agent
+    // carries the resolved snapshot, so later template edits never rewrite it.
+    const templateHire = createTemplateId
+      ? await resolveTemplateHire(companyId, createTemplateId, req)
+      : null;
+    if (templateHire) {
+      createInput.title = templateHire.merged.title;
+      createInput.role = templateHire.merged.role;
+      createInput.budgetMonthlyCents = templateHire.merged.budgetMonthlyCents;
+      if (templateHire.merged.permissions !== undefined) {
+        createInput.permissions = templateHire.merged.permissions;
+      }
+      requestedDesiredSkills = templateHire.merged.desiredSkills ?? requestedDesiredSkills;
+      instructionsBundle = templateHire.merged.instructionsBundle;
+      // A template-sourced budget faces the same board check as a hand-typed
+      // one (design §7); it can never exceed what the caller may set directly.
+      if (templateHire.merged.budgetMonthlyCents > 0) assertBoard(req, COMPANY_BUDGETS_PAGE);
+    }
     const agentId = setupId ?? randomUUID();
     const requestedCreateConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, createInput.runtimeConfig);
@@ -4993,13 +5122,21 @@ export function agentRoutes(
         status: "idle",
         spentMonthlyCents: 0,
         lastHeartbeatAt: null,
+        // Copy-on-hire provenance (design §6.4): the version pin and the
+        // resolved snapshot, immutable for the agent's lifetime.
+        ...(templateHire ? {
+          hiredFromTemplateId: templateHire.templateId,
+          hiredFromTemplateVersion: templateHire.templateVersion,
+          roleTemplateSnapshot: templateHire.snapshot,
+        } : {}),
       },
       {
         ...(setupId ? { setupOnly: true } : {}),
         createdByUserId: req.actor.type === "board" ? req.actor.userId : null,
         createdByAgentId: req.actor.type === "agent" ? req.actor.agentId : null,
         interactionTexts: [JSON.stringify(req.body)],
-        ...(req.actor.type === "board" && req.body.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
+        // Template-sourced budgets count too: createInput holds the merged value.
+        ...(req.actor.type === "board" && createInput.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
         runnerResolved: true,
         responsibleUserId: responsibleUserForAiRequest(req),
         aiConnectionInstall: managedConnection ? { ...managedConnection, createdByUserId: responsibleUserForAiRequest(req) } : undefined,
@@ -5050,6 +5187,9 @@ export function agentRoutes(
         ...(managedConnection?.memberConnectionIds ? { aiConnectionPoolId: managedConnection.connectionId, aiConnectionMemberInstallIds: managedConnection.memberConnectionIds } : {}),
       },
     });
+    if (templateHire) {
+      await logRoleTemplateHireApplied(companyId, templateHire, agent.id, actor);
+    }
     const telemetryClient = getTelemetryClient();
     if (telemetryClient) {
       trackAgentCreated(telemetryClient, { agentRole: agent.role, agentId: agent.id });

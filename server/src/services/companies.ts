@@ -37,6 +37,7 @@ import {
   rekeyCompanyIssueIdentifiers,
 } from "./issue-prefix.js";
 import { environmentService } from "./environments.js";
+import { seedRoleTemplates } from "./role-template-seed.js";
 import { logActivity, type ActivityPublication } from "./activity-log.js";
 import { builtInAgentService } from "./built-in-agents.js";
 import type { Company } from "@paperclipai/shared";
@@ -301,6 +302,10 @@ export function companyService(db: Db, _budgetHooks: BudgetServiceHooks = {}) {
       const created = await createCompanyWithUniquePrefix(data);
       await environmentsSvc.ensureLocalEnvironment(created.id);
       await builtInAgents.autoProvisionBundledAgents(created.id);
+      // Seed the validated role templates (design §5.5): idempotent by key; a
+      // template whose catalog skills are not installed yet lands deprecated
+      // with a missing-skills marker instead of blocking company creation.
+      await seedRoleTemplates(created.id, db);
       const row = await getCompanyQuery(db)
         .where(eq(companies.id, created.id))
         .then((rows) => rows[0] ?? null);

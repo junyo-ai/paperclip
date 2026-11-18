@@ -118,7 +118,7 @@ import {
   writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
 import { trackAgentCreated } from "@paperclipai/shared/telemetry";
-import { validate } from "../middleware/validate.js";
+import { validate, validateAgentHireBody } from "../middleware/validate.js";
 import { registerAgentProjectAccessRoutes } from "./agent-project-access.js";
 import { inheritNativeRunnerAdapterConfig } from "../services/native-runtime/native-agent-runtime-inheritance.js";
 import { agentInstructionRevisionService } from "../services/agent-instruction-revisions.js";
@@ -145,6 +145,15 @@ import {
 } from "../services/index.js";
 import { badRequest, conflict, forbidden, HttpError, notFound, unprocessable } from "../errors.js";
 import { ONBOARDING_FIRST_TASK_SKILL_KEY, PAPERCLIP_CORE_SKILL_KEYS } from "../services/company-skills.js";
+import { roleTemplateStore } from "../services/role-template-store.js";
+import {
+  readTemplateHireRawFields,
+  resolveTemplateIntoAgentCreate,
+  type RoleTemplateSnapshot,
+  type TemplateHireBody,
+  type TemplateHireMerge,
+  type TemplateHireRawFields,
+} from "../services/role-template-resolution.js";
 import { createRunSecretRedactionRegistry } from "../services/run-secret-redaction.js";
 import { agentBudgetPage, assertAuthenticated, assertBoard, assertCompanyAccess, COMPANY_BUDGETS_PAGE, assertInstanceAdmin, buildActorSecretContext, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
 import { runAdapterLoginStartSpine } from "./adapter-login-route-spine.js";
@@ -4477,8 +4486,155 @@ export function agentRoutes(
   // resolves to the hire it already created instead of spawning a "Name 2"
   // duplicate, while a corrected payload (a different adapter config, budget,
   // manager, skills, instructions, ...) counts as a new hire. Hashed, so no
-  // adapter-config secret lands in the activity log.
-  const hireFingerprint = (body: unknown): string => sha256Digest(body);
+  // adapter-config secret lands in the activity log. Template-overridable
+  // presence flags and the caller's explicit permission keys join the hash so
+  // an omitted field and an explicit schema-defaulted one (budget 0, role
+  // "general", canCreateSkills true) stay distinct.
+  const hireFingerprint = (
+    body: unknown,
+    raw: TemplateHireRawFields,
+    explicitPermissions: Record<string, unknown> | undefined,
+  ): string =>
+    sha256Digest(
+      (body as { templateId?: unknown } | null)?.templateId !== undefined
+        || raw.rolePresent
+        || raw.budgetMonthlyCentsPresent
+        || explicitPermissions !== undefined
+        ? { body, raw, permissions: explicitPermissions ?? null }
+        : body,
+    );
+
+  type ResolvedTemplateHire = {
+    templateId: string;
+    templateKey: string;
+    templateVersion: number;
+    merged: TemplateHireMerge;
+    snapshot: RoleTemplateSnapshot;
+  };
+
+  function readRawRequestBody(req: Request): unknown {
+    const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!Buffer.isBuffer(raw) || raw.length === 0) return null;
+    const charset = /charset=([\w-]+)/i.exec(req.headers["content-type"] ?? "")?.[1]?.toLowerCase();
+    const hasUtf16LeBom = raw[0] === 0xff && raw[1] === 0xfe;
+    const hasUtf8Bom = raw[0] === 0xef && raw[1] === 0xbb && raw[2] === 0xbf;
+    const text =
+      charset === "utf-16le" || hasUtf16LeBom
+        ? raw.toString("utf16le", hasUtf16LeBom ? 2 : 0)
+        : raw.toString("utf8", hasUtf8Bom ? 3 : 0);
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
+  function explicitTemplateHirePermissions(body: TemplateHireBody, rawBody: unknown): Record<string, unknown> | undefined {
+    const rawPermissions =
+      rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
+        ? (rawBody as { permissions?: unknown }).permissions
+        : undefined;
+    if (!rawPermissions || typeof rawPermissions !== "object" || Array.isArray(rawPermissions)) {
+      return undefined;
+    }
+    const parsedPermissions = body.permissions ?? {};
+    const explicit: Record<string, unknown> = {};
+    for (const key of Object.keys(rawPermissions)) {
+      if (key in parsedPermissions) explicit[key] = parsedPermissions[key];
+    }
+    return Object.keys(explicit).length > 0 ? explicit : undefined;
+  }
+
+  async function resolveTemplateHire(
+    companyId: string,
+    templateId: string,
+    req: Request,
+  ): Promise<ResolvedTemplateHire> {
+    const rawBody = readRawRequestBody(req);
+    const { template, version, spec } = await roleTemplateStore(db).resolveForHire(companyId, templateId);
+    const body = req.body as TemplateHireBody;
+    const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, {
+      ...body,
+      permissions: explicitTemplateHirePermissions(body, rawBody),
+    }, {
+      templateKey: template.key,
+      templateVersion: version,
+      raw: readTemplateHireRawFields(rawBody),
+    });
+    return { templateId: template.id, templateKey: template.key, templateVersion: version, merged, snapshot };
+  }
+
+  function assertTemplateHirePersonaDeliverable(
+    templateHire: ResolvedTemplateHire | null,
+    adapterType: string,
+    adapterConfig: Record<string, unknown> | null | undefined,
+  ) {
+    if (!templateHire) return;
+    if (templateHire.snapshot.callerOverrides.includes("instructionsBundle")) return;
+    if (!adapterSupportsInstructionsBundle(adapterType)) {
+      throw unprocessable(
+        `Role template ${templateHire.templateKey} delivers its persona as a managed instructions bundle, which the ${adapterType} adapter does not support. Hire with an adapter that supports managed instructions, or provide your own instructionsBundle.`,
+      );
+    }
+    if (adapterConfigTouchesInstructionsConfig((adapterConfig ?? {}) as Record<string, unknown>)) {
+      throw unprocessable(
+        `Role template ${templateHire.templateKey} writes its persona as the managed instructions bundle, which conflicts with the adapterConfig instructions settings. Remove the instructions settings from adapterConfig, or provide your own instructionsBundle.`,
+      );
+    }
+  }
+
+  async function logRoleTemplateHireApplied(
+    companyId: string,
+    hire: ResolvedTemplateHire,
+    agentId: string,
+    actor: ReturnType<typeof getActorInfo>,
+  ) {
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      agentApiKeyId: actor.agentApiKeyId,
+      action: "role_template.hire_applied",
+      entityType: "role_template",
+      entityId: hire.templateId,
+      details: {
+        templateKey: hire.templateKey,
+        templateVersion: hire.templateVersion,
+        agentId,
+        callerOverrides: hire.snapshot.callerOverrides,
+      },
+    });
+  }
+
+  async function findPriorHireByFingerprint(
+    companyId: string,
+    runId: string,
+    requestFingerprint: string,
+  ): Promise<{ status: 200; body: Record<string, unknown> } | null> {
+    const priorHires = await db
+      .select({ entityId: activityLog.entityId, details: activityLog.details })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.companyId, companyId),
+          eq(activityLog.runId, runId),
+          eq(activityLog.action, "agent.hire_created"),
+        ),
+      )
+      .orderBy(desc(activityLog.createdAt));
+    const match = priorHires.find(
+      (row) => (row.details as Record<string, unknown> | null)?.hireFingerprint === requestFingerprint,
+    );
+    if (!match) return null;
+    const existingAgent = await svc.getById(match.entityId);
+    if (!existingAgent || existingAgent.status === "terminated") return null;
+    const priorApprovalId = (match.details as Record<string, unknown> | null)?.approvalId;
+    const existingApproval =
+      typeof priorApprovalId === "string" ? await approvalsSvc.getById(priorApprovalId) : null;
+    return { status: 200, body: { agent: existingAgent, approval: existingApproval, idempotent: true } };
+  }
 
   const handleAgentHire = async (req: Request, res: Response) => {
     const companyId = req.params.companyId as string;
@@ -4497,11 +4653,12 @@ export function agentRoutes(
     // board approval; the approving operator then activates it.
     if (!company.requireBoardApprovalForNewAgents && req.body.budgetMonthlyCents > 0) assertBoard(req, COMPANY_BUDGETS_PAGE);
     const sourceIssueIds = parseSourceIssueIds(req.body);
-    const {
+    let {
       desiredSkills: requestedDesiredSkills,
       instructionsBundle,
       sourceIssueId: _sourceIssueId,
       sourceIssueIds: _sourceIssueIds,
+      templateId: hireTemplateId,
       // The stored-session claim is not an agent column. The server derives the
       // owner from the authenticated actor and consumes the claim in the create
       // transaction, so it never reaches the insert values.
@@ -4556,6 +4713,41 @@ export function agentRoutes(
         hireInput.adapterConfig = restoreRedactedAgentEnv(hireInput.adapterConfig, setupAgent.adapterConfig);
       }
     }
+    const rawRequestBody = readRawRequestBody(req);
+    const requestFingerprint = hireFingerprint(
+      req.body,
+      readTemplateHireRawFields(rawRequestBody),
+      explicitTemplateHirePermissions(req.body as TemplateHireBody, rawRequestBody),
+    );
+    const runId = req.actor.runId && isUuidLike(req.actor.runId) ? req.actor.runId : null;
+    if (runId) {
+      const priorHire = await findPriorHireByFingerprint(companyId, runId, requestFingerprint);
+      if (priorHire) {
+        res.status(priorHire.status).json(priorHire.body);
+        return;
+      }
+    }
+    if (hireTemplateId && hireOnboardingFirstAgent === true) {
+      throw unprocessable(
+        "templateId cannot be combined with onboardingFirstAgent: the onboarding first agent uses the server-owned chief-of-staff persona, not a role template",
+      );
+    }
+    const templateHire = hireTemplateId
+      ? await resolveTemplateHire(companyId, hireTemplateId, req)
+      : null;
+    if (templateHire) {
+      hireInput.title = templateHire.merged.title;
+      hireInput.role = templateHire.merged.role;
+      hireInput.budgetMonthlyCents = templateHire.merged.budgetMonthlyCents;
+      if (templateHire.merged.permissions !== undefined) {
+        hireInput.permissions = templateHire.merged.permissions;
+      }
+      requestedDesiredSkills = templateHire.merged.desiredSkills ?? requestedDesiredSkills;
+      instructionsBundle = templateHire.merged.instructionsBundle;
+      if (!company.requireBoardApprovalForNewAgents && templateHire.merged.budgetMonthlyCents > 0) {
+        assertBoard(req, COMPANY_BUDGETS_PAGE);
+      }
+    }
     const hiredAgentId = setupAgentId ?? randomUUID();
     const requestedHireConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, hireInput.runtimeConfig);
@@ -4591,6 +4783,7 @@ export function agentRoutes(
     Object.assign(hireInput, await resolveNewAgentRunnerForCompany(db, companyId, { ...hireInput, runner: hireRunner,
       onConfigurationWarnings: warnings => { configurationWarnings = warnings; } }));
     hireInput.adapterType = await assertSelectableAdapterType(hireInput.adapterType, hireInput.adapterConfig, companyId);
+    assertTemplateHirePersonaDeliverable(templateHire, hireInput.adapterType, hireInput.adapterConfig);
     const rawHireAdapterConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, hireInput.runtimeConfig);
     await assertFreshPaperclipRunnerProvider(
@@ -4666,33 +4859,10 @@ export function agentRoutes(
     // doubled hire would otherwise strand a phantom teammate the board never
     // approved. The lookup, the create and the activity record run under one
     // lock per company + run, so two overlapping retries cannot both miss.
-    const requestFingerprint = hireFingerprint(req.body);
-    const runId = req.actor.runId && isUuidLike(req.actor.runId) ? req.actor.runId : null;
     const performHire = async (): Promise<{ status: 200 | 201; body: Record<string, unknown> }> => {
       if (runId) {
-        const priorHires = await db
-          .select({ entityId: activityLog.entityId, details: activityLog.details })
-          .from(activityLog)
-          .where(
-            and(
-              eq(activityLog.companyId, companyId),
-              eq(activityLog.runId, runId),
-              eq(activityLog.action, "agent.hire_created"),
-            ),
-          )
-          .orderBy(desc(activityLog.createdAt));
-        const match = priorHires.find(
-          (row) => (row.details as Record<string, unknown> | null)?.hireFingerprint === requestFingerprint,
-        );
-        if (match) {
-          const existingAgent = await svc.getById(match.entityId);
-          if (existingAgent && existingAgent.status !== "terminated") {
-            const priorApprovalId = (match.details as Record<string, unknown> | null)?.approvalId;
-            const existingApproval =
-              typeof priorApprovalId === "string" ? await approvalsSvc.getById(priorApprovalId) : null;
-            return { status: 200, body: { agent: existingAgent, approval: existingApproval, idempotent: true } };
-          }
-        }
+        const priorHire = await findPriorHireByFingerprint(companyId, runId, requestFingerprint);
+        if (priorHire) return { ...priorHire, status: 200 as const };
       }
 
       const requiresApproval = company.requireBoardApprovalForNewAgents;
@@ -4707,13 +4877,18 @@ export function agentRoutes(
           status,
           spentMonthlyCents: 0,
           lastHeartbeatAt: null,
+          ...(templateHire ? {
+            hiredFromTemplateId: templateHire.templateId,
+            hiredFromTemplateVersion: templateHire.templateVersion,
+            roleTemplateSnapshot: templateHire.snapshot,
+          } : {}),
         },
         {
           ...(setupAgentId ? { setupAgentId } : {}),
           createdByUserId: req.actor.type === "board" ? req.actor.userId : null,
           createdByAgentId: req.actor.type === "agent" ? req.actor.agentId : null,
           interactionTexts: [JSON.stringify(req.body)],
-          ...(req.actor.type === "board" && req.body.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
+          ...(req.actor.type === "board" && hireInput.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
           runnerResolved: true,
           responsibleUserId: responsibleUserForAiRequest(req),
           aiConnectionInstall: managedHireConnection ? { ...managedHireConnection, createdByUserId: responsibleUserForAiRequest(req) } : undefined,
@@ -4840,6 +5015,9 @@ export function agentRoutes(
         agent.id,
         actor.actorType === "user" ? actor.actorId : null,
       );
+      if (templateHire) {
+        await logRoleTemplateHireApplied(companyId, templateHire, agent.id, actor);
+      }
 
       if (approval) {
         await logActivity(db, {
@@ -4865,13 +5043,13 @@ export function agentRoutes(
     res.status(outcome.status).json(outcome.body);
   };
 
-  router.post("/companies/:companyId/agent-hires", validate(createAgentHireSchema), async (req, res) => {
+  router.post("/companies/:companyId/agent-hires", validateAgentHireBody(createAgentHireSchema), async (req, res) => {
     if (req.body.setupAgentId) {
       await withHireRunLock(`setup:${req.params.companyId}:${req.body.setupAgentId}`, () => handleAgentHire(req, res));
     } else await handleAgentHire(req, res);
   });
 
-  router.post("/companies/:companyId/agents", validate(createAgentSchema), async (req, res) => {
+  router.post("/companies/:companyId/agents", validateAgentHireBody(createAgentSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     await assertCanCreateAgentsForCompany(req, companyId, { hiring: true });
     if (req.body.budgetMonthlyCents > 0) assertBoard(req, COMPANY_BUDGETS_PAGE);
@@ -4895,9 +5073,10 @@ export function agentRoutes(
       );
     }
 
-    const {
+    let {
       desiredSkills: requestedDesiredSkills,
       instructionsBundle,
+      templateId: createTemplateId,
       // The stored-session claim is not an agent column. The server derives the
       // owner from the authenticated actor and consumes the claim in the create
       // transaction, so it never reaches the insert values.
@@ -4912,6 +5091,30 @@ export function agentRoutes(
       runner: createRunner,
       ...createInput
     } = req.body;
+    if (setupId && createTemplateId) {
+      throw unprocessable(
+        "templateId cannot be combined with setupId: resolve the template on the request that completes the setup",
+      );
+    }
+    if (createTemplateId && createOnboardingFirstAgent === true) {
+      throw unprocessable(
+        "templateId cannot be combined with onboardingFirstAgent: the onboarding first agent uses the server-owned chief-of-staff persona, not a role template",
+      );
+    }
+    const templateHire = createTemplateId
+      ? await resolveTemplateHire(companyId, createTemplateId, req)
+      : null;
+    if (templateHire) {
+      createInput.title = templateHire.merged.title;
+      createInput.role = templateHire.merged.role;
+      createInput.budgetMonthlyCents = templateHire.merged.budgetMonthlyCents;
+      if (templateHire.merged.permissions !== undefined) {
+        createInput.permissions = templateHire.merged.permissions;
+      }
+      requestedDesiredSkills = templateHire.merged.desiredSkills ?? requestedDesiredSkills;
+      instructionsBundle = templateHire.merged.instructionsBundle;
+      if (templateHire.merged.budgetMonthlyCents > 0) assertBoard(req, COMPANY_BUDGETS_PAGE);
+    }
     const agentId = setupId ?? randomUUID();
     const requestedCreateConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, createInput.runtimeConfig);
@@ -4923,6 +5126,7 @@ export function agentRoutes(
     Object.assign(createInput, await resolveNewAgentRunnerForCompany(db, companyId, { ...createInput, runner: createRunner, setupOnly: Boolean(setupId),
       onConfigurationWarnings: warnings => { configurationWarnings = warnings; } }));
     createInput.adapterType = await assertSelectableAdapterType(createInput.adapterType, createInput.adapterConfig, companyId);
+    assertTemplateHirePersonaDeliverable(templateHire, createInput.adapterType, createInput.adapterConfig);
     const rawCreateAdapterConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, createInput.runtimeConfig);
     if (!setupId) await assertFreshPaperclipRunnerProvider(
@@ -4993,13 +5197,18 @@ export function agentRoutes(
         status: "idle",
         spentMonthlyCents: 0,
         lastHeartbeatAt: null,
+        ...(templateHire ? {
+          hiredFromTemplateId: templateHire.templateId,
+          hiredFromTemplateVersion: templateHire.templateVersion,
+          roleTemplateSnapshot: templateHire.snapshot,
+        } : {}),
       },
       {
         ...(setupId ? { setupOnly: true } : {}),
         createdByUserId: req.actor.type === "board" ? req.actor.userId : null,
         createdByAgentId: req.actor.type === "agent" ? req.actor.agentId : null,
         interactionTexts: [JSON.stringify(req.body)],
-        ...(req.actor.type === "board" && req.body.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
+        ...(req.actor.type === "board" && createInput.budgetMonthlyCents > 0 ? { initialBudgetPolicyUserId: getActorInfo(req).actorId } : {}),
         runnerResolved: true,
         responsibleUserId: responsibleUserForAiRequest(req),
         aiConnectionInstall: managedConnection ? { ...managedConnection, createdByUserId: responsibleUserForAiRequest(req) } : undefined,
@@ -5061,6 +5270,9 @@ export function agentRoutes(
       req.actor.type === "board" ? (req.actor.userId ?? null) : null,
     );
     await builtInAgentService(db).ensureCompanyDefaultAgentGrants(companyId);
+    if (templateHire) {
+      await logRoleTemplateHireApplied(companyId, templateHire, agent.id, actor);
+    }
 
     res.status(201).json({ ...redactAgentRowForResponse(agent), ...(configurationWarnings.length ? { configurationWarnings } : {}) });
   });

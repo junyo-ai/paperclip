@@ -49,3 +49,26 @@ export function validateIssueMutationBody(schema: ZodSchema) {
     next();
   };
 }
+
+export function validateAgentHireBody(schema: ZodSchema) {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      req.body = schema.parse(req.body);
+    } catch (err) {
+      if (
+        err instanceof ZodError &&
+        typeof req.body?.templateId === "string" &&
+        req.body.templateId.length > 0 &&
+        err.issues.length > 0 &&
+        err.issues.every((issue) => issue.path.length === 1 && issue.path[0] === "name")
+      ) {
+        throw unprocessable(
+          "A template hire requires an explicit agent name: one template can produce many agents",
+          err.issues,
+        );
+      }
+      throw err;
+    }
+    next();
+  };
+}

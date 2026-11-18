@@ -37,6 +37,7 @@ import {
   rekeyCompanyIssueIdentifiers,
 } from "./issue-prefix.js";
 import { environmentService } from "./environments.js";
+import { seedRoleTemplates } from "./role-template-seed.js";
 import { logActivity, type ActivityPublication } from "./activity-log.js";
 import { builtInAgentService } from "./built-in-agents.js";
 import type { Company } from "@paperclipai/shared";
@@ -301,6 +302,11 @@ export function companyService(db: Db, _budgetHooks: BudgetServiceHooks = {}) {
       const created = await createCompanyWithUniquePrefix(data);
       await environmentsSvc.ensureLocalEnvironment(created.id);
       await builtInAgents.autoProvisionBundledAgents(created.id);
+      try {
+        await seedRoleTemplates(created.id, db);
+      } catch (error) {
+        console.error(`[companies] role template seeding failed for company ${created.id}`, error);
+      }
       const row = await getCompanyQuery(db)
         .where(eq(companies.id, created.id))
         .then((rows) => rows[0] ?? null);

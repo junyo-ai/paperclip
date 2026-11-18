@@ -338,6 +338,27 @@ describeEmbeddedPostgres("template-aware agent hire wiring", () => {
     expect(hires).toHaveLength(0);
   });
 
+  it("rejects a template persona when adapterConfig pins its own instructions settings", async () => {
+    const company = await seedFixtureCompany(db);
+    await seedCompanySkills(db, company.id);
+    const published = await seedPublishedTemplate(db, company.id);
+    const app = createApp(db, BOARD_ACTOR);
+
+    const res = await request(app)
+      .post(`/api/companies/${company.id}/agents`)
+      .send({
+        name: "路径专员",
+        templateId: published.template.id,
+        adapterType: "claude_local",
+        adapterConfig: { instructionsFilePath: "/tmp/custom/AGENTS.md" },
+      });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error).toContain("instructions");
+
+    const hires = await db.select().from(agents).where(eq(agents.companyId, company.id));
+    expect(hires).toHaveLength(0);
+  });
+
   it("rejects templateId combined with setupId", async () => {
     const company = await seedFixtureCompany(db);
     await seedCompanySkills(db, company.id);
@@ -487,6 +508,38 @@ describeEmbeddedPostgres("template-aware agent hire wiring", () => {
     expect(corrected.status, JSON.stringify(corrected.body)).toBe(201);
     expect(corrected.body.agent.id).not.toBe(first.body.agent.id);
     expect(corrected.body.agent.budgetMonthlyCents).toBe(0);
+  });
+
+  it("treats newly explicit permission keys as a corrected request, not a retry", async () => {
+    const company = await seedFixtureCompany(db, true);
+    await seedCompanySkills(db, company.id);
+    const published = await seedPublishedTemplate(db, company.id);
+    const hiringAgent = await seedHiringAgent(db, company.id);
+    const run = await seedHeartbeatRun(db, company.id, hiringAgent.id);
+    const app = createApp(db, agentActor(company.id, hiringAgent.id, run.id));
+
+    const first = await request(app)
+      .post(`/api/companies/${company.id}/agent-hires`)
+      .send({
+        name: "权限修正",
+        templateId: published.template.id,
+        adapterType: "claude_local",
+        permissions: { canCreateAgents: true },
+      });
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body.agent.permissions).toMatchObject({ canCreateSkills: false });
+
+    const corrected = await request(app)
+      .post(`/api/companies/${company.id}/agent-hires`)
+      .send({
+        name: "权限修正",
+        templateId: published.template.id,
+        adapterType: "claude_local",
+        permissions: { canCreateAgents: true, canCreateSkills: true },
+      });
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(201);
+    expect(corrected.body.agent.id).not.toBe(first.body.agent.id);
+    expect(corrected.body.agent.permissions).toMatchObject({ canCreateSkills: true });
   });
 });
 

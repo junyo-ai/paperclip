@@ -50,10 +50,6 @@ export function validateIssueMutationBody(schema: ZodSchema) {
   };
 }
 
-// A role-template hire without a caller-supplied name is a business-rule
-// failure (Role Template design §6.5: one template can produce many agents, so
-// the name is never templated), not a malformed request. Requests that also
-// fail unrelated validation keep the generic Zod 400.
 export function validateAgentHireBody(schema: ZodSchema) {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {

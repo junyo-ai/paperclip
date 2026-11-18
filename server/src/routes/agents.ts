@@ -4487,12 +4487,20 @@ export function agentRoutes(
   // duplicate, while a corrected payload (a different adapter config, budget,
   // manager, skills, instructions, ...) counts as a new hire. Hashed, so no
   // adapter-config secret lands in the activity log. Template-overridable
-  // presence flags join the hash so an omitted field and an explicit
-  // schema-defaulted one (budget 0, role "general") stay distinct.
-  const hireFingerprint = (body: unknown, raw: TemplateHireRawFields): string =>
+  // presence flags and the caller's explicit permission keys join the hash so
+  // an omitted field and an explicit schema-defaulted one (budget 0, role
+  // "general", canCreateSkills true) stay distinct.
+  const hireFingerprint = (
+    body: unknown,
+    raw: TemplateHireRawFields,
+    explicitPermissions: Record<string, unknown> | undefined,
+  ): string =>
     sha256Digest(
-      (body as { templateId?: unknown } | null)?.templateId !== undefined || raw.rolePresent || raw.budgetMonthlyCentsPresent
-        ? { body, raw }
+      (body as { templateId?: unknown } | null)?.templateId !== undefined
+        || raw.rolePresent
+        || raw.budgetMonthlyCentsPresent
+        || explicitPermissions !== undefined
+        ? { body, raw, permissions: explicitPermissions ?? null }
         : body,
     );
 
@@ -4521,21 +4529,20 @@ export function agentRoutes(
     }
   }
 
-  function templateHireBodyWithExplicitFields(req: Request, rawBody: unknown): TemplateHireBody {
-    const body = req.body as TemplateHireBody;
+  function explicitTemplateHirePermissions(body: TemplateHireBody, rawBody: unknown): Record<string, unknown> | undefined {
     const rawPermissions =
       rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
         ? (rawBody as { permissions?: unknown }).permissions
         : undefined;
     if (!rawPermissions || typeof rawPermissions !== "object" || Array.isArray(rawPermissions)) {
-      return { ...body, permissions: undefined };
+      return undefined;
     }
     const parsedPermissions = body.permissions ?? {};
     const explicit: Record<string, unknown> = {};
     for (const key of Object.keys(rawPermissions)) {
       if (key in parsedPermissions) explicit[key] = parsedPermissions[key];
     }
-    return { ...body, permissions: Object.keys(explicit).length > 0 ? explicit : undefined };
+    return Object.keys(explicit).length > 0 ? explicit : undefined;
   }
 
   async function resolveTemplateHire(
@@ -4545,7 +4552,11 @@ export function agentRoutes(
   ): Promise<ResolvedTemplateHire> {
     const rawBody = readRawRequestBody(req);
     const { template, version, spec } = await roleTemplateStore(db).resolveForHire(companyId, templateId);
-    const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, templateHireBodyWithExplicitFields(req, rawBody), {
+    const body = req.body as TemplateHireBody;
+    const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, {
+      ...body,
+      permissions: explicitTemplateHirePermissions(body, rawBody),
+    }, {
       templateKey: template.key,
       templateVersion: version,
       raw: readTemplateHireRawFields(rawBody),
@@ -4553,12 +4564,21 @@ export function agentRoutes(
     return { templateId: template.id, templateKey: template.key, templateVersion: version, merged, snapshot };
   }
 
-  function assertTemplateHirePersonaDeliverable(templateHire: ResolvedTemplateHire | null, adapterType: string) {
+  function assertTemplateHirePersonaDeliverable(
+    templateHire: ResolvedTemplateHire | null,
+    adapterType: string,
+    adapterConfig: Record<string, unknown> | null | undefined,
+  ) {
     if (!templateHire) return;
     if (templateHire.snapshot.callerOverrides.includes("instructionsBundle")) return;
     if (!adapterSupportsInstructionsBundle(adapterType)) {
       throw unprocessable(
         `Role template ${templateHire.templateKey} delivers its persona as a managed instructions bundle, which the ${adapterType} adapter does not support. Hire with an adapter that supports managed instructions, or provide your own instructionsBundle.`,
+      );
+    }
+    if (adapterConfigTouchesInstructionsConfig((adapterConfig ?? {}) as Record<string, unknown>)) {
+      throw unprocessable(
+        `Role template ${templateHire.templateKey} writes its persona as the managed instructions bundle, which conflicts with the adapterConfig instructions settings. Remove the instructions settings from adapterConfig, or provide your own instructionsBundle.`,
       );
     }
   }
@@ -4693,7 +4713,12 @@ export function agentRoutes(
         hireInput.adapterConfig = restoreRedactedAgentEnv(hireInput.adapterConfig, setupAgent.adapterConfig);
       }
     }
-    const requestFingerprint = hireFingerprint(req.body, readTemplateHireRawFields(readRawRequestBody(req)));
+    const rawRequestBody = readRawRequestBody(req);
+    const requestFingerprint = hireFingerprint(
+      req.body,
+      readTemplateHireRawFields(rawRequestBody),
+      explicitTemplateHirePermissions(req.body as TemplateHireBody, rawRequestBody),
+    );
     const runId = req.actor.runId && isUuidLike(req.actor.runId) ? req.actor.runId : null;
     if (runId) {
       const priorHire = await findPriorHireByFingerprint(companyId, runId, requestFingerprint);
@@ -4753,7 +4778,7 @@ export function agentRoutes(
     Object.assign(hireInput, await resolveNewAgentRunnerForCompany(db, companyId, { ...hireInput, runner: hireRunner,
       onConfigurationWarnings: warnings => { configurationWarnings = warnings; } }));
     hireInput.adapterType = await assertSelectableAdapterType(hireInput.adapterType, hireInput.adapterConfig, companyId);
-    assertTemplateHirePersonaDeliverable(templateHire, hireInput.adapterType);
+    assertTemplateHirePersonaDeliverable(templateHire, hireInput.adapterType, hireInput.adapterConfig);
     const rawHireAdapterConfig = (hireInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, hireInput.runtimeConfig);
     await assertFreshPaperclipRunnerProvider(
@@ -5091,7 +5116,7 @@ export function agentRoutes(
     Object.assign(createInput, await resolveNewAgentRunnerForCompany(db, companyId, { ...createInput, runner: createRunner, setupOnly: Boolean(setupId),
       onConfigurationWarnings: warnings => { configurationWarnings = warnings; } }));
     createInput.adapterType = await assertSelectableAdapterType(createInput.adapterType, createInput.adapterConfig, companyId);
-    assertTemplateHirePersonaDeliverable(templateHire, createInput.adapterType);
+    assertTemplateHirePersonaDeliverable(templateHire, createInput.adapterType, createInput.adapterConfig);
     const rawCreateAdapterConfig = (createInput.adapterConfig ?? {}) as Record<string, unknown>;
     assertProviderTraceSettingTransition(req, createInput.runtimeConfig);
     if (!setupId) await assertFreshPaperclipRunnerProvider(

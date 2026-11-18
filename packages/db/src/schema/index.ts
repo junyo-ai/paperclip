@@ -290,3 +290,5 @@ export { projectTaskExecutionPolicies, executionAdmissions, executionAdmissionPr
 export { budgetEvaluationWork } from "./budget_evaluation_work.js";
 export { tailscaleConnections } from "./tailscale_connections.js";
 export { nativeProviderArtifacts, nativeProviderArtifactReferences } from "./native_provider_artifacts.js";
+export { roleTemplates, roleTemplateVersions, roleTemplateCreateReceipts } from "./role_templates.js";
+export type { RoleTemplate, RoleTemplateVersion } from "./role_templates.js";

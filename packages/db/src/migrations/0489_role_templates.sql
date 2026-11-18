@@ -1,4 +1,3 @@
--- paperclip:migration-compat online_compatible: New tables and their indexes are invisible to the previous release; the agents FK is NOT VALID so no scan runs; no index is built on live tables here (the agents provenance index lands in 0490 as a concurrent build).
 CREATE TABLE "role_template_create_receipts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,

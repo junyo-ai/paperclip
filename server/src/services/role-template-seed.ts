@@ -4,7 +4,11 @@ import { roleTemplateSpecSchema, type RoleTemplateSpec } from "@paperclipai/shar
 import { isUniqueViolation } from "../db-errors.js";
 import { companySkillService } from "./company-skills.js";
 import { logActivity, publishActivity, type ActivityPublication } from "./activity-log.js";
-import { missingRoleTemplateSkillKeys, type RoleTemplateAuditActor } from "./role-template-store.js";
+import {
+  missingRoleTemplateSkillKeys,
+  ROLE_TEMPLATE_GAP_REASON_PREFIX,
+  type RoleTemplateAuditActor,
+} from "./role-template-store.js";
 import contentMarketingSeed from "../role-template-seeds/content-marketing-specialist-v1.json" with { type: "json" };
 import softwareEngineerSeed from "../role-template-seeds/software-engineer-v1.json" with { type: "json" };
 
@@ -27,10 +31,8 @@ export type RoleTemplateSeedResult = {
   missingSkillKeys: string[];
 };
 
-const GAPPED_REASON_PREFIX = "missing-skills:";
-
 function gappedReason(missingSkillKeys: string[]): string {
-  return `${GAPPED_REASON_PREFIX} ${missingSkillKeys.join(", ")}`;
+  return `${ROLE_TEMPLATE_GAP_REASON_PREFIX} ${missingSkillKeys.join(", ")}`;
 }
 
 /**
@@ -83,8 +85,6 @@ async function installSeed(
         missingSkillKeys: missing,
       };
     } catch (error) {
-      // A concurrent install won the insert race; treat the row as present.
-      // Drizzle wraps the driver error, so 23505 arrives via the cause chain.
       if (!isUniqueViolation(error)) {
         throw error;
       }
@@ -96,14 +96,10 @@ async function installSeed(
     return { key, outcome: "conflict", templateId: null, missingSkillKeys: missing };
   }
 
-  // The only overwrite path: recovery of a row this installer previously
-  // parked as gapped. The `seed` origin proves installer ownership — a
-  // board-authored template whose deprecation reason merely looks like a gap
-  // marker is never eligible.
   const isGapped =
     row.origin === "seed" &&
     row.status === "deprecated" &&
-    (row.deprecationReason ?? "").startsWith(GAPPED_REASON_PREFIX);
+    (row.deprecationReason ?? "").startsWith(ROLE_TEMPLATE_GAP_REASON_PREFIX);
   if (!isGapped) {
     return { key, outcome: "already_present", templateId: row.id, missingSkillKeys: [] };
   }
@@ -127,8 +123,6 @@ async function insertSeedRow(
   spec: RoleTemplateSpec,
   missingSkillKeys: string[],
 ): Promise<RoleTemplate> {
-  // Buffered until the transaction commits so subscribers never see a create
-  // event for a row that rolled back.
   const publications: ActivityPublication[] = [];
   const template = await db.transaction(async (tx) => {
     const now = new Date();
@@ -139,8 +133,6 @@ async function insertSeedRow(
         key,
         name: spec.templateName,
         origin: "seed",
-        // A gapped seed still installs version 1, but only a resolved registry
-        // can make it hireable.
         status: missingSkillKeys.length > 0 ? "deprecated" : "published",
         currentVersion: 1,
         workingSpec: spec,
@@ -204,7 +196,6 @@ async function recoverGappedSeed(
 ): Promise<RoleTemplateSeedResult> {
   const publications: ActivityPublication[] = [];
   const result = await db.transaction(async (tx) => {
-    // Re-check skill resolution inside the same transaction.
     const stillMissing = await missingRoleTemplateSkillKeys(
       tx as unknown as Db,
       companyId,
@@ -230,16 +221,14 @@ async function recoverGappedSeed(
         and(
           eq(roleTemplates.id, row.id),
           eq(roleTemplates.companyId, companyId),
-          // Installer-owned rows only: the seed origin plus the recorded gap
-          // reason together authorize the overwrite.
           eq(roleTemplates.origin, "seed"),
           isNull(roleTemplates.deletedAt),
-          like(roleTemplates.deprecationReason, `${GAPPED_REASON_PREFIX}%`),
+          eq(roleTemplates.workingSpec, row.workingSpec),
+          like(roleTemplates.deprecationReason, `${ROLE_TEMPLATE_GAP_REASON_PREFIX}%`),
         ),
       )
       .returning();
     if (!updated) {
-      // The row changed between the read and the CAS: never overwrite it.
       return { key: row.key, outcome: "conflict" as const, templateId: row.id, missingSkillKeys: [] };
     }
 

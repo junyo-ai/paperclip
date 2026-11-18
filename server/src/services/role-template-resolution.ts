@@ -118,10 +118,8 @@ export function resolveTemplateIntoAgentCreate(
     budgetMonthlyCents = typeof body.budgetMonthlyCents === "number" ? body.budgetMonthlyCents : 0;
   }
 
-  // desiredSkills: union merge, caller wins per key. Caller selections come
-  // first so a caller pin (e.g. by UUID) survives downstream alias
-  // deduplication, which keeps whichever entry resolves first. Core defaults
-  // are still appended downstream by withDefaultRoleSkillSelections.
+  // desiredSkills: union merge, caller wins per key. Core defaults are still
+  // appended downstream by withDefaultRoleSkillSelections.
   const mergedSkills = new Map<string, { key: string; versionId: string | null }>();
   if (body.desiredSkills !== undefined) {
     callerOverrides.push("desiredSkills");
@@ -148,9 +146,7 @@ export function resolveTemplateIntoAgentCreate(
     if (body.permissions !== undefined) callerOverrides.push("permissions");
   }
 
-  // instructionsBundle: a caller bundle replaces the persona-derived one
-  // wholesale. An omitted entry file keeps the hire path's AGENTS.md default
-  // (agents.ts uses the same fallback) rather than the first file key.
+  // instructionsBundle: a caller bundle replaces the persona-derived one wholesale.
   let instructionsBundle: ResolvedAgentInstructionsBundle;
   if (body.instructionsBundle !== undefined) {
     instructionsBundle = {

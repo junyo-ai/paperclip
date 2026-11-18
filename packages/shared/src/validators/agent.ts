@@ -121,10 +121,6 @@ export const createAgentSchema = z.object({
   // instruction file instead of the generic default, and honors it only for
   // board-authored requests. Mirrors onboardingFirstTask on issue create.
   onboardingFirstAgent: z.boolean().optional(),
-  // NOTE: no `templateId` here yet. The create/hire contracts only accept a
-  // template once the routes actually resolve one; a dedicated template-aware
-  // schema lands with the hire wiring (design §6.1) so a templateId sent to
-  // these routes can never succeed silently unapplied.
 });
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;

@@ -113,8 +113,6 @@ describe("resolveTemplateIntoAgentCreate", () => {
       ],
     };
     const { merged, snapshot } = resolveTemplateIntoAgentCreate(spec, body, options);
-    // Caller selections come first so a caller version pin survives downstream
-    // alias deduplication (which keeps whichever entry resolves first).
     expect(merged.desiredSkills).toEqual([
       { key: "paperclipai/paperclip/paperclip", versionId: "version-7" },
       { key: "paperclipai/paperclip/agentmail", versionId: null },

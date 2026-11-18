@@ -25,14 +25,10 @@ export const roleTemplates = pgTable(
   "role_templates",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    // Company deletion removes templates with the company; ordinary template
-    // deletion stays soft so hired agents keep their provenance.
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     name: text("name").notNull(),
     status: text("status").$type<RoleTemplateStatus>().notNull().default("draft"),
-    // Installer provenance: only rows the seed installer created ("seed") are
-    // eligible for gapped-seed recovery; board-authored rows never are.
     origin: text("origin").$type<"manual" | "seed">().notNull().default("manual"),
     currentVersion: integer("current_version").notNull().default(0),
     workingSpec: jsonb("working_spec").$type<RoleTemplateSpec>().notNull(),

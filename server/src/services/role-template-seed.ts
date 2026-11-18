@@ -1,5 +1,5 @@
-import { and, eq, isNull, like, sql } from "drizzle-orm";
-import { roleTemplates, roleTemplateVersions, type Db, type RoleTemplate } from "@paperclipai/db";
+import { and, eq, inArray, isNull, like, sql } from "drizzle-orm";
+import { companySkills, roleTemplates, roleTemplateVersions, type Db, type RoleTemplate } from "@paperclipai/db";
 import { roleTemplateSpecSchema, type RoleTemplateSpec } from "@paperclipai/shared";
 import { isUniqueViolation } from "../db-errors.js";
 import { companySkillService } from "./company-skills.js";
@@ -77,12 +77,12 @@ async function installSeed(
 
   if (!liveRow) {
     try {
-      const template = await insertSeedRow(companyId, db, actor, key, spec, missing);
+      const { template, missing: txMissing } = await insertSeedRow(companyId, db, actor, key, spec);
       return {
         key,
-        outcome: missing.length > 0 ? "installed_with_gaps" : "installed",
+        outcome: txMissing.length > 0 ? "installed_with_gaps" : "installed",
         templateId: template.id,
-        missingSkillKeys: missing,
+        missingSkillKeys: txMissing,
       };
     } catch (error) {
       if (!isUniqueViolation(error)) {
@@ -121,10 +121,20 @@ async function insertSeedRow(
   actor: RoleTemplateAuditActor,
   key: string,
   spec: RoleTemplateSpec,
-  missingSkillKeys: string[],
-): Promise<RoleTemplate> {
+): Promise<{ template: RoleTemplate; missing: string[] }> {
   const publications: ActivityPublication[] = [];
-  const template = await db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
+    const required = [...new Set(spec.skills.map((skill) => skill.key))];
+    const presentRows = required.length
+      ? await tx
+          .select({ key: companySkills.key })
+          .from(companySkills)
+          .where(and(eq(companySkills.companyId, companyId), inArray(companySkills.key, required)))
+          .for("share")
+      : [];
+    const present = new Set(presentRows.map((r) => r.key));
+    const missingSkillKeys = required.filter((k) => !present.has(k));
+
     const now = new Date();
     const [row] = await tx
       .insert(roleTemplates)
@@ -174,10 +184,10 @@ async function insertSeedRow(
       entityId: row.id,
       details: { key, seed: true, version: 1, withGaps: missingSkillKeys.length > 0 || undefined },
     }, publications);
-    return row;
+    return { template: row, missing: missingSkillKeys };
   });
   for (const publication of publications) publishActivity(publication);
-  return template;
+  return outcome;
 }
 
 /**
@@ -209,7 +219,6 @@ async function recoverGappedSeed(
       .update(roleTemplates)
       .set({
         workingSpec: spec,
-        name: spec.templateName,
         status: "published",
         currentVersion: sql`${roleTemplates.currentVersion} + 1`,
         publishedAt: new Date(),

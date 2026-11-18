@@ -22,7 +22,6 @@ import { logActivity, publishActivity, type ActivityPublication } from "./activi
 
 export const ROLE_TEMPLATE_NOT_HIREABLE_CODE = "role_template_not_hireable";
 
-/** Reserved deprecation-reason prefix; only the seed installer may write it. */
 export const ROLE_TEMPLATE_GAP_REASON_PREFIX = "missing-skills:";
 
 /** The audit fields `logActivity` reads, as `getActorInfo` produces them. */
@@ -149,11 +148,12 @@ export function roleTemplateStore(db: Db) {
   }
 
   async function getVersionRow(
+    runner: Db,
     companyId: string,
     templateId: string,
     version: number,
   ): Promise<RoleTemplateVersion | null> {
-    const [row] = await db
+    const [row] = await runner
       .select()
       .from(roleTemplateVersions)
       .where(
@@ -207,7 +207,7 @@ export function roleTemplateStore(db: Db) {
     getPublishedVersion: async (companyId: string, templateId: string) => {
       const row = await requireLiveRow(companyId, templateId);
       if (row.currentVersion < 1) return null;
-      return getVersionRow(companyId, templateId, row.currentVersion);
+      return getVersionRow(db, companyId, templateId, row.currentVersion);
     },
 
     create: async (
@@ -283,7 +283,7 @@ export function roleTemplateStore(db: Db) {
             .values({ companyId, key: createReceipt.receiptKey, fingerprint: createReceipt.fingerprint, templateId: created.id })
             .onConflictDoUpdate({
               target: [roleTemplateCreateReceipts.companyId, roleTemplateCreateReceipts.key],
-              set: { fingerprint: createReceipt.fingerprint, templateId: created.id, createdAt: new Date() },
+              set: { fingerprint: createReceipt.fingerprint, templateId: created.id, createdAt: sql`now()` },
             });
         }
         await audit(tx as unknown as Db, companyId, created.id, "role_template.created", actor, { key, name: created.name }, publications);
@@ -482,7 +482,7 @@ export function roleTemplateStore(db: Db) {
         if (locked.status === "draft") throw conflict("Publish the role template before restoring it");
         if (locked.status === "published") return locked;
         if (locked.currentVersion > 0) {
-          const versionRow = await getVersionRow(companyId, locked.id, locked.currentVersion);
+          const versionRow = await getVersionRow(tx as unknown as Db, companyId, locked.id, locked.currentVersion);
           const missing = versionRow
             ? await missingRoleTemplateSkillKeys(
                 tx as unknown as Db,
@@ -528,7 +528,13 @@ export function roleTemplateStore(db: Db) {
           .set({ deletedAt: new Date(), updatedAt: new Date() })
           .where(and(eq(roleTemplates.id, row.id), isNull(roleTemplates.deletedAt), ne(roleTemplates.status, "published")))
           .returning();
-        if (!row2) throw notFound("Role template not found");
+        if (!row2) {
+          const [current] = await tx.select().from(roleTemplates).where(eq(roleTemplates.id, row.id)).limit(1);
+          if (current && !current.deletedAt && current.status === "published") {
+            throw conflict("Deprecate the role template before deleting it");
+          }
+          throw notFound("Role template not found");
+        }
         await audit(tx as unknown as Db, companyId, row2.id, "role_template.deleted", actor, { key: row2.key }, publications);
         return row2;
       });
@@ -548,7 +554,7 @@ export function roleTemplateStore(db: Db) {
       if (!row || row.status !== "published" || row.currentVersion < 1) {
         throw unprocessable("Role template is not hireable", { code: ROLE_TEMPLATE_NOT_HIREABLE_CODE });
       }
-      const versionRow = await getVersionRow(companyId, row.id, row.currentVersion);
+      const versionRow = await getVersionRow(db, companyId, row.id, row.currentVersion);
       if (!versionRow) {
         throw unprocessable("Role template is not hireable", { code: ROLE_TEMPLATE_NOT_HIREABLE_CODE });
       }

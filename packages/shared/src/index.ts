@@ -2902,6 +2902,8 @@ export { restoreAgentInstructionSchema } from "./validators/agent.js";
 export type { AgentInstructionCandidate } from "./types/agent.js";
 export { resolveAgentInstructionCandidateSchema, type ResolveAgentInstructionCandidate } from "./validators/agent.js";
 
+export * from "./validators/role-template.js";
+
 export { isHeartbeatRunVisibleInMine, latestFailedRunsByAgent } from "./heartbeat-inbox.js";
 export * from "./browser-use.js";
 

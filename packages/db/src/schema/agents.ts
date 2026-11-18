@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { environments } from "./environments.js";
+import { roleTemplates } from "./role_templates.js";
 
 export const agents = pgTable(
   "agents",
@@ -49,6 +50,12 @@ export const agents = pgTable(
     permissions: jsonb("permissions").$type<Record<string, unknown>>().notNull().default({}),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    // Copy-on-hire provenance: which role template version produced this agent
+    // and the resolved application record. Immutable after hire; template
+    // lifecycle changes never rewrite existing agents.
+    hiredFromTemplateId: uuid("hired_from_template_id").references((): AnyPgColumn => roleTemplates.id, { onDelete: "set null" }),
+    hiredFromTemplateVersion: integer("hired_from_template_version"),
+    roleTemplateSnapshot: jsonb("role_template_snapshot").$type<Record<string, unknown>>(),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -59,5 +66,8 @@ export const agents = pgTable(
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
     companyDefaultEnvironmentIdx: index("agents_company_default_environment_idx").on(table.companyId, table.defaultEnvironmentId),
+    companyHiredFromTemplateIdx: index("agents_company_hired_from_template_idx")
+      .on(table.companyId, table.hiredFromTemplateId)
+      .concurrently(),
   }),
 );

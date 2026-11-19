@@ -7,6 +7,7 @@ import {
   companyMemberships,
   companySkills,
   createDb,
+  heartbeatRuns,
   roleTemplates,
 } from "@paperclipai/db";
 import type { RoleTemplateSpec } from "@paperclipai/shared";
@@ -117,6 +118,7 @@ const support = await getEmbeddedPostgresTestSupport();
       actorType: "agent",
       actorId: agentId,
       responsibleUserId: null,
+      identityContextId: null,
       ...overrides,
     };
   }
@@ -217,6 +219,59 @@ const support = await getEmbeddedPostgresTestSupport();
     await expect(
       createInput(s, { spec: { ...SPEC, templateName: "" }, idempotencyKey: "confirm-1" }),
     ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it.each(["admin-u", "viewer-u"] as const)(
+    "create falls back to the admitted run's responsible user for unsnapshotted sessions (%s)",
+    async (responsibleUserId) => {
+      const f = await fixture();
+      const [run] = await db
+        .insert(heartbeatRuns)
+        .values({
+          companyId: f.company.id,
+          agentId: f.agent.id,
+          status: "running",
+          contextSnapshot: {},
+          responsibleUserId,
+        })
+        .returning();
+      const s = session(f.company.id, f.agent.id, { runId: run.id });
+      const attempt = createInput(s, { spec: SPEC, idempotencyKey: "confirm-1" });
+      if (responsibleUserId === "admin-u") {
+        await expect(attempt).resolves.toMatchObject({ created: true });
+      } else {
+        await expect(attempt).rejects.toMatchObject({ status: 403 });
+        expect(
+          await db.select().from(roleTemplates).where(eq(roleTemplates.companyId, f.company.id)),
+        ).toHaveLength(0);
+      }
+    },
+  );
+
+  it("create honors a company_default snapshot's deliberate lack of a sponsor", async () => {
+    const f = await fixture();
+    const [run] = await db
+      .insert(heartbeatRuns)
+      .values({
+        companyId: f.company.id,
+        agentId: f.agent.id,
+        status: "running",
+        contextSnapshot: {},
+        responsibleUserId: "admin-u",
+      })
+      .returning();
+    // captureSessionIdentity already ran for this session and captured a
+    // company_default context: responsibleUserId is authoritative null.
+    const s = session(f.company.id, f.agent.id, {
+      runId: run.id,
+      identityContextId: randomUUID(),
+    });
+    await expect(
+      createInput(s, { spec: SPEC, idempotencyKey: "confirm-1" }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      await db.select().from(roleTemplates).where(eq(roleTemplates.companyId, f.company.id)),
+    ).toHaveLength(0);
   });
 
   it("create replays the same confirmation and rejects a mutated one", async () => {

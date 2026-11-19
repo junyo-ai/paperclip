@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { companyMemberships, type Db } from "@paperclipai/db";
+import { companyMemberships, heartbeatRuns, type Db } from "@paperclipai/db";
 import {
   ROLE_TEMPLATE_KEY_PATTERN,
   roleTemplateSpecSchema,
@@ -39,7 +39,13 @@ const createInputSchema = draftInputSchema
 
 export type RoleTemplateChatSession = Pick<
   ToolGatewaySession,
-  "companyId" | "agentId" | "runId" | "actorType" | "actorId" | "responsibleUserId"
+  | "companyId"
+  | "agentId"
+  | "runId"
+  | "actorType"
+  | "actorId"
+  | "responsibleUserId"
+  | "identityContextId"
 >;
 
 export const ROLE_TEMPLATE_CHAT_TOOLS: readonly ToolGatewayDescriptor[] = [
@@ -76,16 +82,38 @@ export const ROLE_TEMPLATE_CHAT_TOOLS: readonly ToolGatewayDescriptor[] = [
 /**
  * The human behind the chat is the only possible publisher: the acting user
  * when a user drives the session directly, otherwise the run's responsible
- * user. Purely autonomous agent sessions resolve to no one and are refused.
+ * user. Ordinary sessions never captured identity fields, so without an
+ * identity snapshot the admitted run's responsible user applies — but a
+ * company_default snapshot deliberately carries none, and a snapshot with no
+ * responsible user is authoritative (captureSessionIdentity semantics).
+ * Purely autonomous agent sessions resolve to no one and are refused.
  */
+async function resolveSponsorUserId(
+  db: Db,
+  session: RoleTemplateChatSession,
+): Promise<string | null> {
+  if (session.actorType === "user") return session.actorId ?? null;
+  if (session.responsibleUserId) return session.responsibleUserId;
+  if (session.runId && !session.identityContextId) {
+    const [run] = await db
+      .select({ responsibleUserId: heartbeatRuns.responsibleUserId })
+      .from(heartbeatRuns)
+      .where(
+        and(
+          eq(heartbeatRuns.companyId, session.companyId),
+          eq(heartbeatRuns.id, session.runId),
+        ),
+      );
+    return run?.responsibleUserId ?? null;
+  }
+  return null;
+}
+
 async function requireSponsoringCompanyAdmin(
   db: Db,
   session: RoleTemplateChatSession,
 ): Promise<RoleTemplateAuditActor> {
-  const sponsorUserId =
-    session.actorType === "user"
-      ? session.actorId ?? null
-      : session.responsibleUserId ?? null;
+  const sponsorUserId = await resolveSponsorUserId(db, session);
   if (!sponsorUserId) {
     throw forbidden(
       "Creating role templates from chat requires a company admin: no verified human sponsors this session",

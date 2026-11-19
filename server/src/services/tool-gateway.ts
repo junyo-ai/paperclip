@@ -49,6 +49,7 @@ import { githubGuestBotConnectionForSession, githubBotToolsForSession } from "./
 import { githubChatReviewService } from "./chat-github-reviews.js";
 import { runIdentityContexts } from "@paperclipai/db";
 import { executeSpekoVoiceTool, spekoToolsForSession } from "./voice/speko-agent-tools.js";
+import { executeRoleTemplateTool, ROLE_TEMPLATE_CHAT_TOOLS } from "./role-template-chat-tools.js";
 import { captureRunIdentity } from "./run-identity.js";
 import { emitConnectionInvoked } from "./connector-telemetry.js";
 import { resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
@@ -384,7 +385,8 @@ export type ToolGatewayProviderType =
   | "paperclip_virtual"
   | "paperclip_github_chat"
   | "paperclip_slack_chat"
-  | "paperclip_speko_voice";
+  | "paperclip_speko_voice"
+  | "paperclip_role_template";
 
 export interface ConnectedMcpGatewayMetadata {
   applicationId: string;
@@ -3439,6 +3441,9 @@ export function createToolGatewayService(
       ...await measureRunPhase("connectors.discovery.github", () => githubBotToolsForSession(db, session)),
       ...await measureRunPhase("connectors.discovery.slack", () => slackToolsForSession(db, session)),
       ...await measureRunPhase("connectors.discovery.speko", () => spekoToolsForSession(db, session)),
+      // Conversational template builder ships with the gateway itself: no
+      // connection, endpoint, or catalog row to discover it through.
+      ...ROLE_TEMPLATE_CHAT_TOOLS,
       ...connectedTools,
     ];
   }
@@ -3460,7 +3465,8 @@ export function createToolGatewayService(
       (tool) =>
         session.agentId ||
         (tool.providerType !== "paperclip_self" &&
-          tool.providerType !== "paperclip_plugin"),
+          tool.providerType !== "paperclip_plugin" &&
+          tool.providerType !== "paperclip_role_template"),
     );
     const decisionCache = createToolAccessDecisionCache();
     const decisions = await measureRunPhase("connectors.discovery.policy", () => decideToolsForListing(
@@ -3548,6 +3554,18 @@ export function createToolGatewayService(
         if (error instanceof HttpError && error.status === 409
           && asRecord(error.details)?.reasonCode === "github_idempotency_conflict") {
           throw new ToolGatewayHttpError(error.status, error.message, "github_idempotency_conflict", asRecord(error.details) ?? {});
+        }
+        throw error;
+      }
+    }
+    if (tool.providerType === "paperclip_role_template") {
+      try {
+        const data = await executeRoleTemplateTool(db, session, tool.upstreamToolName ?? "", parameters);
+        return { content: JSON.stringify(data), data };
+      } catch (error) {
+        if (error instanceof HttpError) {
+          const details = asRecord(error.details) ?? {};
+          throw new ToolGatewayHttpError(error.status, error.message, typeof details.code === "string" ? details.code : "role_template_operation_rejected", details);
         }
         throw error;
       }

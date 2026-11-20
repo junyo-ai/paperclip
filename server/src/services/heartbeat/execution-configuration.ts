@@ -48,6 +48,23 @@ const ACCEPTED_PLAN_CONVERSION_SKILL_KEY =
 type ManagedAiRuntime = Awaited<ReturnType<typeof prepareManagedAiRuntime>>;
 type EnvironmentSelection = Awaited<ReturnType<typeof selectHeartbeatEnvironment>>;
 
+function sshEnvironmentProvidesAiCredentials(env: unknown): boolean {
+  if (!env || typeof env !== "object") return false;
+  const values = env as Record<string, unknown>;
+  return AI_AUTH_ENV_KEYS.some((key) => {
+    const value = values[key];
+    if (value === undefined || value === null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (value && typeof value === "object") {
+      const binding = value as { type?: unknown; value?: unknown; required?: unknown };
+      if (binding.type === "plain") return typeof binding.value === "string" && binding.value.trim().length > 0;
+      if (binding.type === "user_secret_ref") return binding.required !== false;
+      return binding.type === "secret_ref";
+    }
+    return false;
+  });
+}
+
 /** Preparation and routing must use the same immutable mode as native recovery. */
 export function bindHeartbeatRunnerHomeMode(config: Record<string, unknown>, persistedExecution: unknown): Record<string, unknown> {
   const saved = parseObject(persistedExecution);
@@ -161,7 +178,8 @@ export async function prepareHeartbeatExecutionConfiguration(db: Db, input: Hear
   // preparation step can fail. Subsequent provider/identity values extend it.
   onFailureSecretsResolved(() => []);
   const aiBinding = preconfiguredHome || useSshHostAuth ? undefined : input.config.aiBinding;
-  if (selectedEnvironmentForConfig?.driver === "ssh" && selectedEnvironmentForConfig.config.useHostAuth === false && !aiBinding && !persistedNativeExecutionInput) {
+  if (selectedEnvironmentForConfig?.driver === "ssh" && selectedEnvironmentForConfig.config.useHostAuth === false && !aiBinding && !persistedNativeExecutionInput
+    && !sshEnvironmentProvidesAiCredentials(selectedEnvironmentForConfig.envVars)) {
     throw new ConfigurationIncompleteFailure("Select an AI account for this agent or enable authentication configured on the remote machine in the SSH environment's advanced settings.", {
       configurationIncomplete: { reason: "ssh_ai_connection_required", actionUrl: `/agents/${agent.id}/runtime` },
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiConnectionSessionCompatibilityInputs, managedAiSessionIdentityCompatible, aiConnectionOnlyConfigRevision, aiConnectionRevisionMetadata } from "../services/ai-connection-session.js";
+import { aiConnectionSessionCompatibilityInputs, managedAiSessionIdentityCompatible, taskSessionCredentialCompatibleWithRun, aiConnectionOnlyConfigRevision, aiConnectionRevisionMetadata } from "../services/ai-connection-session.js";
 import { buildEffectiveRunSessionConfigMetadata, resolveTaskSessionConfigFreshness } from "../services/heartbeat.js";
 
 const binding = { mode: "shared" as const, provider: "openai" as const, method: "subscription" as const, connectionId: "account", grantId: "grant" };
@@ -77,5 +77,22 @@ describe("AI pool session adoption", () => {
     const input = { ...base, originalIssueOverrides: null, binding, router: true, sessionIdentity, credentialIdentity, revisions: [] };
     expect(aiConnectionSessionCompatibilityInputs({ ...input, storedIdentity: "other-grant:alice:0" })).toEqual([]);
     expect(aiConnectionSessionCompatibilityInputs({ ...input, storedIdentity: "grant:bob:0" })).toEqual([]);
+  });
+});
+
+describe("taskSessionCredentialCompatibleWithRun", () => {
+  it("resets a saved managed-credential session when the run has no managed runtime", () => {
+    expect(taskSessionCredentialCompatibleWithRun("grant:alice:0", undefined)).toBe(false);
+  });
+  it("keeps unmanaged sessions resumable on a fallback run", () => {
+    expect(taskSessionCredentialCompatibleWithRun(undefined, undefined)).toBe(true);
+    expect(taskSessionCredentialCompatibleWithRun(null, undefined)).toBe(true);
+    expect(taskSessionCredentialCompatibleWithRun("", undefined)).toBe(true);
+  });
+  it("keeps the managed-runtime identity rules unchanged", () => {
+    const runtime = { sessionIdentity, identity: credentialIdentity };
+    expect(taskSessionCredentialCompatibleWithRun(sessionIdentity, runtime)).toBe(true);
+    expect(taskSessionCredentialCompatibleWithRun(undefined, runtime)).toBe(false);
+    expect(taskSessionCredentialCompatibleWithRun("grant:bob:0", runtime)).toBe(false);
   });
 });

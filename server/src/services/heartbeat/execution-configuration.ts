@@ -48,10 +48,14 @@ const ACCEPTED_PLAN_CONVERSION_SKILL_KEY =
 type ManagedAiRuntime = Awaited<ReturnType<typeof prepareManagedAiRuntime>>;
 type EnvironmentSelection = Awaited<ReturnType<typeof selectHeartbeatEnvironment>>;
 
+function aiEnvKeyCarriesCredential(key: string): boolean {
+  return !/(_BASE_URL$|_MODEL$|^CLAUDE_CODE_USE_|^GOOGLE_GENAI_USE_VERTEXAI$|^AWS_(?:DEFAULT_)?PROFILE$|^AWS_ROLE_ARN$|^AWS_CONTAINER_CREDENTIALS_|^PAPERCLIP_OPENCODE_PROVIDERS$)/.test(key);
+}
+
 function sshEnvironmentProvidesAiCredentials(env: unknown): boolean {
   if (!env || typeof env !== "object") return false;
   const values = env as Record<string, unknown>;
-  return AI_AUTH_ENV_KEYS.some((key) => {
+  return AI_AUTH_ENV_KEYS.filter(aiEnvKeyCarriesCredential).some((key) => {
     const value = values[key];
     if (value === undefined || value === null) return false;
     if (typeof value === "string") return value.trim().length > 0;

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "slug": "moonshot",
+  "name": "Moonshot Kimi",
+  "description": "Connect Moonshot Kimi accounts for your agents.",
+  "categories": [
+    "ai"
+  ],
+  "branding": {
+    "logoUrl": "/brands/apps/api-key-generic.svg"
+  },
+  "urlPatterns": [
+    "https://api.moonshot.cn/*"
+  ],
+  "methods": [
+    {
+      "key": "ai-api_key",
+      "label": "Moonshot API key",
+      "purpose": "ai",
+      "transport": "runtime_auth",
+      "auth": "api_key",
+      "ai": {
+        "provider": "moonshot",
+        "method": "api_key"
+      },
+      "grantKinds": [
+        "user",
+        "organization"
+      ],
+      "ownershipModes": [
+        "customer"
+      ],
+      "whenToUse": "Authenticate an agent with this account.",
+      "guidanceMd": "Use your personal account or an explicitly shared company account.",
+      "riskTier": "S3",
+      "credentialFields": [
+        {
+          "key": "apiKey",
+          "label": "API key",
+          "type": "password",
+          "required": true,
+          "placeholder": "Enter API key",
+          "secret": true
+        }
+      ],
+      "keyPlacement": {
+        "location": "env",
+        "name": "MOONSHOT_API_KEY"
+      }
+    }
+  ],
+  "tags": [
+    "model-provider"
+  ]
+}

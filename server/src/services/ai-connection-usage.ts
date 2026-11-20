@@ -4,6 +4,7 @@ import {
   type AiConnectionUsage,
   type AiConnectionUsageLimit,
   type AiConnectionUsageOverage,
+  type AiProvider,
 } from "@paperclipai/shared";
 import { parseGrokAuthPayload } from "@paperclipai/adapter-grok-local/server";
 
@@ -336,7 +337,10 @@ export async function probeAiConnectionUsage(
     return { ...base, status: "unsupported", errorCode: "unsupported", message: messages.unsupported };
   }
   try {
-    const observation = await probes[metadata.provider](credential, options.request ?? fetch);
+    // Domestic providers never reach here (supportsAiConnectionUsage rejects them); the
+    // lookup stays total for TypeScript without pretending they expose usage probes.
+    const probe = (probes as Record<AiProvider, (credential: string, request: typeof fetch) => Promise<Observation>>)[metadata.provider];
+    const observation = await probe(credential, options.request ?? fetch);
     if (!observation.limits.some((entry) => entry.usedPercent != null || entry.used != null || entry.limit != null || entry.limitReached != null || entry.allowed != null)
       && !Object.values(observation.overage ?? {}).some((value) => typeof value === "number" || typeof value === "boolean")) throw new ProbeFailure("invalid_response");
     return { ...base, ...observation, status: "ok", checkedAt: new Date().toISOString() };

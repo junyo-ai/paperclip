@@ -59,6 +59,9 @@ export const roleTemplateSpecSchema = z.object({
     environmentKind: z.enum(["session", "git_repo"]).optional(),
     maxConcurrentRuns: z.number().int().min(1).max(4).optional(),
     permissions: roleTemplatePermissionsSchema.optional(),
+    // Optional company inference connection reference (BYOK): resolved against
+    // the hiring company's ai-connections at hire time, never applied blindly.
+    inferenceConnectionId: z.string().uuid().optional(),
     notes: z.string().max(2000).optional(),
   }),
   // Editorial record from the design deliverables; never applied at hire.

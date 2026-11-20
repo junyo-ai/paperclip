@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { aiProviderRoutingSchema, aiRoutingHarness, isAiRoutingCompatible, type AiProviderRouting } from "./ai-provider-routing.js";
+import { isDomesticAiProvider } from "./domestic-ai-providers.js";
+export type { DomesticAiProvider } from "./domestic-ai-providers.js";
 
 /** Runtime authentication is a separate transport, never a tool or channel. */
 export const connectionPurposeTransportSchema = z.discriminatedUnion(
@@ -34,11 +36,16 @@ export const AI_PROVIDERS = [
   "xai",
   "github",
   "google",
+  "deepseek",
+  "zhipu",
+  "moonshot",
+  "minimax",
 ] as const;
 export const aiProviderSchema = z.enum(AI_PROVIDERS);
 export const aiAuthMethodSchema = z.enum(["subscription", "api_key"]);
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 export type AiAuthMethod = z.infer<typeof aiAuthMethodSchema>;
+export { DOMESTIC_AI_PROVIDERS, DOMESTIC_AI_PROVIDER_DEFAULTS, domesticDefaultRouting, isDomesticAiProvider } from "./domestic-ai-providers.js";
 const requirement = { provider: aiProviderSchema, method: aiAuthMethodSchema };
 export const aiConnectionBindingSchema = z.discriminatedUnion("mode", [
   z.object({
@@ -117,6 +124,25 @@ export const AI_CONNECTION_CAPABILITIES: Record<
       subscription: { adapters: ["grok_local"], envKey: "GROK_HOME" },
       api_key: { adapters: ["grok_local"], envKey: "XAI_API_KEY" },
     },
+  },
+  // Domestic providers are API-key connections that always carry gateway
+  // chat routing (official endpoint by default), so their direct-adapter list
+  // only needs the OpenAI-compatible harness.
+  deepseek: {
+    name: "DeepSeek",
+    methods: { api_key: { adapters: ["opencode_local"], envKey: "DEEPSEEK_API_KEY" } },
+  },
+  zhipu: {
+    name: "Zhipu GLM",
+    methods: { api_key: { adapters: ["opencode_local"], envKey: "ZHIPU_API_KEY" } },
+  },
+  moonshot: {
+    name: "Moonshot Kimi",
+    methods: { api_key: { adapters: ["opencode_local"], envKey: "MOONSHOT_API_KEY" } },
+  },
+  minimax: {
+    name: "MiniMax",
+    methods: { api_key: { adapters: ["opencode_local"], envKey: "MINIMAX_API_KEY" } },
   },
 };
 export function isAiConnectionCompatible(
@@ -227,7 +253,9 @@ export const createAiConnectionSchema = z
       ctx.addIssue({ code: "custom", message: "Unsupported sign-in method" });
     if (v.routing && (v.method !== "api_key" || (v.routing.kind === "openrouter" && v.provider !== "openrouter") || (v.routing.kind === "bedrock" && v.provider !== "anthropic")))
       ctx.addIssue({ code: "custom", message: "Routing requires the matching provider and API authentication." });
-    if (v.routing && ["gateway", "local"].includes(v.routing.kind) && v.provider !== (v.routing.protocol === "messages" ? "anthropic" : "openai"))
+    if (v.routing && ["gateway", "local"].includes(v.routing.kind) && v.provider !== (v.routing.protocol === "messages" ? "anthropic" : "openai")
+      // Domestic providers speak the OpenAI chat-completions format at their official endpoints.
+      && !(v.routing.protocol === "chat" && isDomesticAiProvider(v.provider)))
       ctx.addIssue({ code: "custom", message: "The provider must match the endpoint’s API format." });
     if (v.routing?.auth === "none") {
       if (v.apiKey || v.loginSessionId) ctx.addIssue({ code: "custom", message: "Provide only the selected authentication method." });

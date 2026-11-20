@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   aiConnectionBindingSchema,
   isAiConnectionCompatible,
+  isDomesticAiProvider,
   type AiRuntimeConnectionBinding,
   type AiAuthMethod,
   type AiConnectionBinding,
@@ -123,7 +124,7 @@ export function AiConnectionField({
   };
   const method: AiAuthMethod = (value && value.mode !== "router" && value.mode !== "responsible_user" ? value.method : undefined)
     ?? accounts.data?.connections.find((account) => account.provider === provider && account.isDefault)?.method
-    ?? (provider === "openrouter" || provider === "google" || provider === "github" ? "api_key" : "subscription");
+    ?? (provider === "openrouter" || provider === "google" || provider === "github" || (provider != null && isDomesticAiProvider(provider)) ? "api_key" : "subscription");
   const compatiblePools = agentId ? accounts.data?.pools?.filter(pool => pool.enabled && pool.members.some(member => isAiConnectionCompatible(member.binding, routerAdapterType ?? adapterType, member.profile.model, member.profile.provider, member.profile.acpxAgent))) ?? [] : [];
   if (!provider) return null;
   if (legacy && !value && !adopting)

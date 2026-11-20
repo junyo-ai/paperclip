@@ -14,6 +14,10 @@ export async function validateAiApiKey(
     openrouter: "https://openrouter.ai/api/v1/key",
     xai: "https://api.x.ai/v1/models",
     google: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+    deepseek: "https://api.deepseek.com/models",
+    zhipu: "https://open.bigmodel.cn/api/paas/v4/models",
+    moonshot: "https://api.moonshot.cn/v1/models",
+    minimax: "https://api.minimax.chat/v1/models",
   };
   let response: Response;
   try {

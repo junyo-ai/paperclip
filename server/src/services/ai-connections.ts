@@ -1270,5 +1270,36 @@ export function aiConnectionService(db: Db) {
       return [{ ...row, summary }];
     });
   }
-  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed };
+  /**
+   * Domestic inference connections fall back to environment credentials when
+   * their selection would fail on a missing connection or personal default.
+   * Existing providers keep their hard-failure semantics; this gate only
+   * decides the run's fallback before credentials are prepared.
+   */
+  async function inferenceBindingAvailable(
+    companyId: string,
+    responsibleUserId: string | null,
+    binding: AiConnectionBinding,
+  ): Promise<boolean> {
+    const usable = (row: { connection: typeof toolConnections.$inferSelect; grant: typeof connectionGrants.$inferSelect }) =>
+      row.grant.status === "active" && row.connection.enabled
+      && row.connection.status === "active" && row.connection.healthStatus === "ok";
+    if (binding.mode === "responsible_user") {
+      if (!responsibleUserId) return false;
+      const [row] = await db
+        .select({ grantId: aiProviderDefaults.grantId })
+        .from(aiProviderDefaults)
+        .where(and(
+          eq(aiProviderDefaults.companyId, companyId),
+          eq(aiProviderDefaults.userId, responsibleUserId),
+          eq(aiProviderDefaults.provider, binding.provider),
+        ))
+        .limit(1);
+      if (!row?.grantId) return false;
+      return (await rows(companyId)).some(r => r.grant.id === row.grantId && usable(r));
+    }
+    return (await rows(companyId)).some(r =>
+      r.connection.id === binding.connectionId && r.grant.id === binding.grantId && usable(r));
+  }
+  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed, inferenceBindingAvailable };
 }

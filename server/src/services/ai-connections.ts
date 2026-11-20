@@ -1270,5 +1270,74 @@ export function aiConnectionService(db: Db) {
       return [{ ...row, summary }];
     });
   }
-  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed };
+  async function inferenceBindingAvailable(
+    companyId: string,
+    responsibleUserId: string | null,
+    binding: AiConnectionBinding,
+  ): Promise<boolean> {
+    const usable = (row: { connection: typeof toolConnections.$inferSelect; grant: typeof connectionGrants.$inferSelect }) =>
+      row.grant.status === "active" && row.connection.enabled
+      && row.connection.status === "active" && row.connection.healthStatus === "ok";
+    if (binding.mode === "responsible_user") {
+      if (!responsibleUserId) return false;
+      const [row] = await db
+        .select({ grantId: aiProviderDefaults.grantId })
+        .from(aiProviderDefaults)
+        .where(and(
+          eq(aiProviderDefaults.companyId, companyId),
+          eq(aiProviderDefaults.userId, responsibleUserId),
+          eq(aiProviderDefaults.provider, binding.provider),
+        ))
+        .limit(1);
+      if (!row?.grantId) return false;
+      return (await rows(companyId)).some(r => r.grant.id === row.grantId && usable(r));
+    }
+    return (await rows(companyId)).some(r =>
+      r.connection.id === binding.connectionId && r.grant.id === binding.grantId && usable(r));
+  }
+  async function templateInferenceBinding(input: {
+    companyId: string;
+    userId: string | null;
+    agentId: string;
+    adapterType: string;
+    model?: unknown;
+    runnerProvider?: unknown;
+    acpxAgent?: unknown;
+    connectionId: string;
+    allowances?: (binding: AiConnectionBinding) => Promise<{ personal: boolean; shared: boolean }>;
+  }): Promise<AiConnectionBinding | undefined> {
+    const row = (await rows(input.companyId)).find(r =>
+      r.connection.id === input.connectionId
+      && r.grant.status === "active" && r.connection.enabled
+      && r.connection.status === "active" && r.connection.healthStatus === "ok");
+    if (!row) return undefined;
+    const metadata = aiConnectionMetadataSchema.parse(row.connection.config.ai);
+    const binding: AiConnectionBinding = {
+      provider: metadata.provider,
+      method: metadata.method,
+      mode: row.grant.kind === "organization" ? "shared" : "delegated",
+      connectionId: row.connection.id,
+      grantId: row.grant.id,
+    };
+    if (!isAiConnectionCompatible(binding, input.adapterType, input.model, input.runnerProvider, input.acpxAgent)) return undefined;
+    const allowances = input.allowances ? await input.allowances(binding) : { personal: false, shared: false };
+    try {
+      await select({
+        companyId: input.companyId,
+        userId: input.userId,
+        agentId: input.agentId,
+        adapterType: input.adapterType,
+        model: input.model,
+        runnerProvider: input.runnerProvider,
+        acpxAgent: input.acpxAgent,
+        binding,
+        allowUninstalledPersonal: allowances.personal,
+        allowUninstalledShared: allowances.shared,
+      });
+      return binding;
+    } catch {
+      return undefined;
+    }
+  }
+  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed, inferenceBindingAvailable, templateInferenceBinding };
 }

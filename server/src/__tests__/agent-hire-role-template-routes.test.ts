@@ -15,12 +15,17 @@ import {
   agentRuntimeState,
   agentWakeupRequests,
   approvals,
+  authUsers,
   budgetPolicies,
   builtInManagedResources,
   companies,
   companyMemberships,
+  companySecretVersions,
+  companySecrets,
   companySkillVersions,
   companySkills,
+  connectionGrantMembers,
+  connectionGrants,
   createDb,
   environments,
   heartbeatRuns,
@@ -29,11 +34,14 @@ import {
   roleTemplateVersions,
   routineTriggers,
   routines,
+  toolConnectionInstalls,
+  toolConnections,
 } from "@paperclipai/db";
-import type { RoleTemplateSpec } from "@paperclipai/shared";
+import { domesticDefaultRouting, type RoleTemplateSpec } from "@paperclipai/shared";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { errorHandler } from "../middleware/index.js";
 import { agentRoutes } from "../routes/agents.js";
+import { aiConnectionService } from "../services/ai-connections.js";
 import { ROLE_TEMPLATE_GAP_REASON_PREFIX, roleTemplateStore } from "../services/role-template-store.js";
 import { seedRoleTemplates } from "../services/role-template-seed.js";
 import { companyService } from "../services/companies.js";
@@ -182,6 +190,12 @@ describeEmbeddedPostgres("template-aware agent hire wiring", () => {
   }, 60_000);
 
   afterEach(async () => {
+    await db.delete(toolConnectionInstalls);
+    await db.delete(connectionGrantMembers);
+    await db.delete(connectionGrants);
+    await db.delete(toolConnections);
+    await db.delete(companySecretVersions);
+    await db.delete(companySecrets);
     await db.delete(agentFileRoots);
     await db.delete(roleTemplateVersions);
     await db.delete(roleTemplates);
@@ -577,6 +591,86 @@ describeEmbeddedPostgres("template-aware agent hire wiring", () => {
     expect(corrected.status, JSON.stringify(corrected.body)).toBe(201);
     expect(corrected.body.agent.id).not.toBe(first.body.agent.id);
     expect(corrected.body.agent.permissions).toMatchObject({ canCreateSkills: true });
+  });
+
+  it("installs a template-referenced personal domestic connection for the new agent", async () => {
+    const company = await seedFixtureCompany(db);
+    await seedCompanySkills(db, company.id);
+    const owner = `tpl-owner-${randomUUID()}`;
+    await db.insert(authUsers).values({ id: owner, name: owner, email: `${owner}@example.test`, createdAt: new Date(), updatedAt: new Date() });
+    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: owner, membershipRole: "owner", status: "active" });
+    const saved = await aiConnectionService(db).save(company.id, owner, {
+      provider: "deepseek", method: "api_key", ownership: "personal", name: "Personal deepseek",
+      apiKey: "fixture-deepseek-key", allAgents: false, agentIds: [], routing: domesticDefaultRouting("deepseek"),
+    }, "fixture-deepseek-key");
+    const store = roleTemplateStore(db);
+    const actor = { actorType: "user" as const, actorId: owner };
+    const { template } = await store.create(company.id, {
+      key: "deepseek-runner",
+      spec: {
+        ...TEMPLATE_SPEC,
+        templateName: "DeepSeek 运行专员",
+        defaults: { ...TEMPLATE_SPEC.defaults, inferenceConnectionId: saved.connectionId },
+      },
+    }, actor);
+    await store.publish(company.id, template.id, actor);
+    const app = createApp(db, { type: "board", userId: owner, source: "local_implicit", companyIds: [company.id], memberships: [{ companyId: company.id, membershipRole: "owner", status: "active" }] });
+
+    const res = await request(app)
+      .post(`/api/companies/${company.id}/agents`)
+      .send({ name: "推理专员", templateId: template.id, adapterType: "opencode_local", adapterConfig: { model: "deepseek/deepseek-chat" } });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const [row] = await db.select().from(agents).where(eq(agents.id, res.body.id));
+    expect((row!.runtimeConfig as Record<string, unknown>)?.aiConnection).toEqual({
+      provider: "deepseek", method: "api_key", mode: "delegated", connectionId: saved.connectionId, grantId: saved.grantId,
+    });
+    const installs = await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, saved.connectionId));
+    expect(installs).toEqual([expect.objectContaining({ targetType: "agent", targetId: res.body.id })]);
+  });
+
+  it("keeps a resolved template inference binding over the hiring manager's default", async () => {
+    const company = await seedFixtureCompany(db);
+    await seedCompanySkills(db, company.id);
+    const owner = `tpl-manager-${randomUUID()}`;
+    await db.insert(authUsers).values({ id: owner, name: owner, email: `${owner}@example.test`, createdAt: new Date(), updatedAt: new Date() });
+    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user", principalId: owner, membershipRole: "owner", status: "active" });
+    await db.insert(principalPermissionGrants).values({ companyId: company.id, principalType: "user", principalId: owner, permissionKey: "agents:create" });
+    const shared = await aiConnectionService(db).save(company.id, owner, {
+      provider: "zhipu", method: "api_key", ownership: "shared", name: "Company zhipu",
+      apiKey: "fixture-zhipu-key", allAgents: true, agentIds: [], routing: domesticDefaultRouting("zhipu"),
+    }, "fixture-zhipu-key");
+    const managersOwn = await aiConnectionService(db).save(company.id, owner, {
+      provider: "moonshot", method: "api_key", ownership: "shared", name: "Company moonshot",
+      apiKey: "fixture-moonshot-key", allAgents: true, agentIds: [], routing: domesticDefaultRouting("moonshot"),
+    }, "fixture-moonshot-key");
+    const store = roleTemplateStore(db);
+    const actor = { actorType: "user" as const, actorId: owner };
+    const { template } = await store.create(company.id, {
+      key: "zhipu-runner",
+      spec: {
+        ...TEMPLATE_SPEC,
+        templateName: "GLM 运行专员",
+        defaults: { permissions: TEMPLATE_SPEC.defaults.permissions, notes: TEMPLATE_SPEC.defaults.notes, inferenceConnectionId: shared.connectionId },
+      },
+    }, actor);
+    await store.publish(company.id, template.id, actor);
+    const hiringAgent = await seedHiringAgent(db, company.id);
+    await db.update(agents).set({
+      adapterType: "opencode_local",
+      runtimeConfig: { aiConnection: { provider: "moonshot", method: "api_key", mode: "shared", connectionId: managersOwn.connectionId, grantId: managersOwn.grantId } },
+    }).where(eq(agents.id, hiringAgent.id));
+    const app = createApp(db, { type: "agent", agentId: hiringAgent.id, companyId: company.id, source: "agent_jwt", onBehalfOfUserId: owner, onBehalfOfMemberships: [{ companyId: company.id, membershipRole: "owner", status: "active" }] });
+
+    const res = await request(app)
+      .post(`/api/companies/${company.id}/agent-hires`)
+      .send({ name: "模板推理专员", templateId: template.id, adapterType: "opencode_local", adapterConfig: { model: "zhipu/glm-4.5" } });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const [row] = await db.select().from(agents).where(eq(agents.id, res.body.agent.id));
+    expect((row!.runtimeConfig as Record<string, unknown>)?.aiConnection).toEqual({
+      provider: "zhipu", method: "api_key", mode: "shared", connectionId: shared.connectionId, grantId: shared.grantId,
+    });
   });
 });
 

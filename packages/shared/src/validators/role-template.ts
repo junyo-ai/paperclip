@@ -59,6 +59,7 @@ export const roleTemplateSpecSchema = z.object({
     environmentKind: z.enum(["session", "git_repo"]).optional(),
     maxConcurrentRuns: z.number().int().min(1).max(4).optional(),
     permissions: roleTemplatePermissionsSchema.optional(),
+    inferenceConnectionId: z.string().uuid().optional(),
     notes: z.string().max(2000).optional(),
   }),
   // Editorial record from the design deliverables; never applied at hire.

@@ -2206,14 +2206,34 @@ export function agentRoutes(
     adapterType: string,
     adapterConfig: Record<string, unknown>,
     runtimeConfig: unknown,
+    options: { agentId?: string; templateInferenceConnectionId?: string } = {},
   ) {
     const normalized = normalizeNewAgentRuntimeConfig(runtimeConfig);
     if (normalized.aiConnection) return normalized;
+    if (options.templateInferenceConnectionId && options.agentId) {
+      const binding = await aiConnectionService(db).templateInferenceBinding({
+        companyId,
+        userId: responsibleUserForAiRequest(req),
+        agentId: options.agentId,
+        adapterType,
+        model: adapterConfig.model,
+        runnerProvider: adapterConfig.provider,
+        acpxAgent: adapterConfig.acpxAgent,
+        connectionId: options.templateInferenceConnectionId,
+        allowances: async candidate => ({
+          personal: true,
+          shared: await canInstallSharedAiConnectionForNewAgent(db, req, companyId, candidate),
+        }),
+      });
+      if (binding) normalized.aiConnection = binding;
+    }
     if (req.actor.type === "agent") {
       const manager = req.actor.agentId ? await svc.getById(req.actor.agentId) : null;
       if (!manager || manager.companyId !== companyId) throw forbidden("Hiring agent is unavailable");
-      const binding = defaultAiConnectionForHire(adapterType, adapterConfig, manager.runtimeConfig?.aiConnection);
-      if (binding) normalized.aiConnection = binding;
+      if (!normalized.aiConnection) {
+        const binding = defaultAiConnectionForHire(adapterType, adapterConfig, manager.runtimeConfig?.aiConnection);
+        if (binding) normalized.aiConnection = binding;
+      }
     }
     // Copilot has no ambient-auth setup path. Omitting a binding still selects
     // the responsible user's saved account and must pass the same metadata
@@ -4840,7 +4860,10 @@ export function agentRoutes(
       adapterType: hireInput.adapterType,
       adapterConfig: desiredSkillAssignment.adapterConfig,
     });
-    const normalizedRuntimeConfig = await normalizeCreatedAgentRuntimeConfig(req, companyId, hireInput.adapterType, normalizedAdapterConfig, hireInput.runtimeConfig);
+    const normalizedRuntimeConfig = await normalizeCreatedAgentRuntimeConfig(req, companyId, hireInput.adapterType, normalizedAdapterConfig, hireInput.runtimeConfig, {
+      agentId: hiredAgentId,
+      templateInferenceConnectionId: templateHire?.merged.inferenceConnectionId,
+    });
     const normalizedHireInput = {
       ...hireInput,
       adapterConfig: normalizedAdapterConfig,
@@ -5177,7 +5200,10 @@ export function agentRoutes(
       adapterConfig: desiredSkillAssignment.adapterConfig,
       setupOnly: Boolean(setupId),
     });
-    const normalizedRuntimeConfig = await normalizeCreatedAgentRuntimeConfig(req, companyId, createInput.adapterType, normalizedAdapterConfig, createInput.runtimeConfig);
+    const normalizedRuntimeConfig = await normalizeCreatedAgentRuntimeConfig(req, companyId, createInput.adapterType, normalizedAdapterConfig, createInput.runtimeConfig, {
+      agentId,
+      templateInferenceConnectionId: templateHire?.merged.inferenceConnectionId,
+    });
     await assertAgentEnvironmentSelection(companyId, createInput.adapterType, createInput.defaultEnvironmentId);
     await assertAgentDefaultEnvironmentSelection(companyId, createInput.defaultEnvironmentId, {
       allowedDrivers: allowedEnvironmentDriversForAgent(createInput.adapterType),

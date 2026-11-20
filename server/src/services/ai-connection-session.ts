@@ -24,6 +24,15 @@ export function managedAiSessionIdentityCompatible(
   return stored === sessionIdentity || (sessionIdentity.endsWith(":0") && stored === credentialIdentity);
 }
 
+export function taskSessionCredentialCompatibleWithRun(
+  stored: unknown,
+  runtime: { sessionIdentity: string; identity: string } | undefined,
+): boolean {
+  return runtime
+    ? managedAiSessionIdentityCompatible(stored, runtime.sessionIdentity, runtime.identity)
+    : !stored;
+}
+
 export function aiConnectionOnlyConfigRevision(revision: ConfigRevision): boolean {
   const withoutBinding = (snapshot: Record<string, unknown>) => {
     const runtimeConfig = { ...record(snapshot.runtimeConfig) };

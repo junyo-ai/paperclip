@@ -3424,6 +3424,13 @@
       "when": 1795006331429,
       "tag": "0490_role_template_agent_index",
       "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1795006400000,
+      "tag": "0491_domestic_ai_providers",
+      "breakpoints": true
     }
   ]
 }

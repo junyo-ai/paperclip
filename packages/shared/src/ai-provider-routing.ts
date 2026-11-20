@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDomesticAiProvider } from "./domestic-ai-providers.js";
 
 /** Value-free routing stored on the connection, never supplied by an agent binding. */
 export const aiProviderRoutingSchema = z
@@ -137,6 +138,7 @@ export function aiRoutingModel(
 
 /** Catalog identity is derived from routing, including accounts saved before these rows existed. */
 export function aiConnectionCatalogSlug(provider: string, routing?: Pick<AiProviderRouting, "kind" | "protocol">): string {
+  if (isDomesticAiProvider(provider)) return provider;
   if (routing?.kind === "gateway") {
     return routing.protocol === "messages" ? "messages-api"
       : routing.protocol === "chat" ? "chat-completions-api" : "responses-api";

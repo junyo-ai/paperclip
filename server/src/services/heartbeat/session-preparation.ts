@@ -4,7 +4,7 @@ import { agentConfigRevisions, type Db, type agents, type agentTaskSessions, typ
 import type { AiConnectionBinding, AiRuntimeConnectionBinding } from "@paperclipai/shared";
 import { getServerAdapter } from "../../adapters/index.js";
 import type { prepareManagedAiRuntime } from "../ai-connection-runtime.js";
-import { aiConnectionSessionCompatibilityInputs, managedAiSessionIdentityCompatible } from "../ai-connection-session.js";
+import { aiConnectionSessionCompatibilityInputs, taskSessionCredentialCompatibleWithRun } from "../ai-connection-session.js";
 import { createNativeSessionHandoffLoader } from "../native-runtime/native-session-handoff.js";
 import { agentInstructionsService } from "../agent-instructions.js";
 import {
@@ -205,10 +205,11 @@ export async function prepareHeartbeatSession(db: Db, input: HeartbeatSessionPre
   const sessionResetReason =
     sessionConfigFreshness.reasons.join("; ") || null;
   const taskSessionForRun = resetTaskSession ? null : taskSession;
-  const taskSessionCredentialCompatible = !managedAiRuntime || managedAiSessionIdentityCompatible(
+  const taskSessionCredentialCompatible = taskSessionCredentialCompatibleWithRun(
     taskSession?.sessionParamsJson?.paperclipAiCredentialIdentity,
-    managedAiRuntime.sessionIdentity,
-    managedAiRuntime.identity,
+    managedAiRuntime
+      ? { sessionIdentity: managedAiRuntime.sessionIdentity, identity: managedAiRuntime.identity }
+      : undefined,
   );
   const taskSessionId = readNonEmptyString(taskSessionDecodedParams?.sessionId);
   const taskResumeSessionId = taskSessionCredentialCompatible && taskSessionForRun?.lastRunId &&
@@ -340,12 +341,12 @@ export async function resolveHeartbeatAdapterSession(input: HeartbeatAdapterSess
 
   if (managedAiRuntime) {
     sessionConfigMetadata.aiCredentialIdentity = managedAiRuntime.sessionIdentity;
-    if (!taskSessionCredentialCompatible) {
-      runtimeSessionIdForAdapter = null;
-      runtimeSessionParamsForAdapter = null;
-      previousSessionDisplayId = null;
-      delete executionContinuation?.resumeDelta;
-    }
+  }
+  if (!taskSessionCredentialCompatible) {
+    runtimeSessionIdForAdapter = null;
+    runtimeSessionParamsForAdapter = null;
+    previousSessionDisplayId = null;
+    delete executionContinuation?.resumeDelta;
   }
   const runtimeForAdapter = {
     sessionId: runtimeSessionIdForAdapter,

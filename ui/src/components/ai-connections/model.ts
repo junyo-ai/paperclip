@@ -25,6 +25,10 @@ export const AI_PROVIDERS: Record<
     subscriptionName: "Grok subscription",
     logo: "/brands/adapters/grok.svg",
   },
+  deepseek: { name: "DeepSeek" },
+  zhipu: { name: "Zhipu GLM" },
+  moonshot: { name: "Moonshot Kimi" },
+  minimax: { name: "MiniMax" },
 };
 
 export type AiConnectionSummary = Omit<AiManagedConnectionSummary, "isDefault"> & { isDefault?: boolean };

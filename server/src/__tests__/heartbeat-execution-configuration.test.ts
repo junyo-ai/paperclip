@@ -411,6 +411,24 @@ describePostgres("heartbeat execution configuration through adapter dispatch", (
     await expect(opening.prepare()).rejects.toMatchObject({ resultJson: { configurationIncomplete: { reason: "ssh_ai_connection_required" } } });
   });
 
+  it.each([
+    ["plain string", "fixture-env-key"],
+    ["plain binding", { type: "plain", value: "fixture-env-key" }],
+  ])("allows an unbound run on a no-auth SSH environment when it configures an AI credential (%s)", async (_label, credential) => {
+    const f = await seed();
+    const environment = { ...await environmentService(db).ensureLocalEnvironment(), driver: "ssh", config: { useHostAuth: false }, envVars: { DEEPSEEK_API_KEY: credential } } as unknown as Environment;
+    const opening = await configuration(f, { provider: "opencode", model: "deepseek/deepseek-chat" }, {}, "paperclip_runner", false, "shared_workspace", environment);
+    const result = await opening.prepare();
+    expect(result.prepared).toBe(true);
+  });
+
+  it("still rejects a no-auth SSH environment whose env vars carry no AI credential", async () => {
+    const f = await seed();
+    const environment = { ...await environmentService(db).ensureLocalEnvironment(), driver: "ssh", config: { useHostAuth: false }, envVars: { OPENAI_BASE_URL: "https://gateway.internal/v1" } } as unknown as Environment;
+    const opening = await configuration(f, { provider: "opencode", model: "deepseek/deepseek-chat" }, {}, "paperclip_runner", false, "shared_workspace", environment);
+    await expect(opening.prepare()).rejects.toMatchObject({ resultJson: { configurationIncomplete: { reason: "ssh_ai_connection_required" } } });
+  });
+
   it("delivers the Studio pin instead of ordinary assignments and recovers that exact native selection", async () => {
     const f = await seed(), skills = companySkillService(db);
     const selected = await skills.createLocalSkill(f.companyId, { name: "Unassigned Studio skill", markdown: "# Studio\nOriginal selected bytes.\n" });

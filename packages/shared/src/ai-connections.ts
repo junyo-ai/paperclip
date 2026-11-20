@@ -125,9 +125,6 @@ export const AI_CONNECTION_CAPABILITIES: Record<
       api_key: { adapters: ["grok_local"], envKey: "XAI_API_KEY" },
     },
   },
-  // Domestic providers are API-key connections that always carry gateway
-  // chat routing (official endpoint by default), so their direct-adapter list
-  // only needs the OpenAI-compatible harness.
   deepseek: {
     name: "DeepSeek",
     methods: { api_key: { adapters: ["opencode_local"], envKey: "DEEPSEEK_API_KEY" } },

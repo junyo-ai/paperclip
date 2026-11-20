@@ -1304,6 +1304,7 @@ export function aiConnectionService(db: Db) {
     runnerProvider?: unknown;
     acpxAgent?: unknown;
     connectionId: string;
+    allowances?: (binding: AiConnectionBinding) => Promise<{ personal: boolean; shared: boolean }>;
   }): Promise<AiConnectionBinding | undefined> {
     const row = (await rows(input.companyId)).find(r =>
       r.connection.id === input.connectionId
@@ -1319,8 +1320,20 @@ export function aiConnectionService(db: Db) {
       grantId: row.grant.id,
     };
     if (!isAiConnectionCompatible(binding, input.adapterType, input.model, input.runnerProvider, input.acpxAgent)) return undefined;
+    const allowances = input.allowances ? await input.allowances(binding) : { personal: false, shared: false };
     try {
-      await select({ ...input, binding });
+      await select({
+        companyId: input.companyId,
+        userId: input.userId,
+        agentId: input.agentId,
+        adapterType: input.adapterType,
+        model: input.model,
+        runnerProvider: input.runnerProvider,
+        acpxAgent: input.acpxAgent,
+        binding,
+        allowUninstalledPersonal: allowances.personal,
+        allowUninstalledShared: allowances.shared,
+      });
       return binding;
     } catch {
       return undefined;

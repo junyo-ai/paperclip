@@ -2220,14 +2220,20 @@ export function agentRoutes(
         runnerProvider: adapterConfig.provider,
         acpxAgent: adapterConfig.acpxAgent,
         connectionId: options.templateInferenceConnectionId,
+        allowances: async candidate => ({
+          personal: true,
+          shared: await canInstallSharedAiConnectionForNewAgent(db, req, companyId, candidate),
+        }),
       });
       if (binding) normalized.aiConnection = binding;
     }
     if (req.actor.type === "agent") {
       const manager = req.actor.agentId ? await svc.getById(req.actor.agentId) : null;
       if (!manager || manager.companyId !== companyId) throw forbidden("Hiring agent is unavailable");
-      const binding = defaultAiConnectionForHire(adapterType, adapterConfig, manager.runtimeConfig?.aiConnection);
-      if (binding) normalized.aiConnection = binding;
+      if (!normalized.aiConnection) {
+        const binding = defaultAiConnectionForHire(adapterType, adapterConfig, manager.runtimeConfig?.aiConnection);
+        if (binding) normalized.aiConnection = binding;
+      }
     }
     // Copilot has no ambient-auth setup path. Omitting a binding still selects
     // the responsible user's saved account and must pass the same metadata

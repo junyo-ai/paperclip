@@ -99,13 +99,7 @@ export function AiProviderSetup({
   ) => void;
 }) {
   const [provider, setProvider] = useState<ProviderChoice | undefined>(
-    reconnect
-      ? reconnect.routing?.kind === "gateway" ||
-        reconnect.routing?.kind === "local" ||
-        reconnect.routing?.kind === "bedrock"
-        ? reconnect.routing.kind
-        : reconnect.provider
-      : initialProvider,
+    reconnect ? reconnect.provider : initialProvider,
   );
   const [step, setStep] = useState(
     reconnect || initialProvider ? "connect" : "provider",

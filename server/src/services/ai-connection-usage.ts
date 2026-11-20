@@ -337,8 +337,6 @@ export async function probeAiConnectionUsage(
     return { ...base, status: "unsupported", errorCode: "unsupported", message: messages.unsupported };
   }
   try {
-    // Domestic providers never reach here (supportsAiConnectionUsage rejects them); the
-    // lookup stays total for TypeScript without pretending they expose usage probes.
     const probe = (probes as Record<AiProvider, (credential: string, request: typeof fetch) => Promise<Observation>>)[metadata.provider];
     const observation = await probe(credential, options.request ?? fetch);
     if (!observation.limits.some((entry) => entry.usedPercent != null || entry.used != null || entry.limit != null || entry.limitReached != null || entry.allowed != null)

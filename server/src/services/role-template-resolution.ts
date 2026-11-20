@@ -47,6 +47,7 @@ export type TemplateHireMerge = {
   desiredSkills: Array<{ key: string; versionId: string | null }> | undefined;
   permissions: Record<string, unknown> | undefined;
   instructionsBundle: ResolvedAgentInstructionsBundle;
+  inferenceConnectionId: string | undefined;
 };
 
 /** The copy-on-hire application record written to `agents.roleTemplateSnapshot`. */
@@ -170,7 +171,7 @@ export function resolveTemplateIntoAgentCreate(
   };
 
   return {
-    merged: { title, role, budgetMonthlyCents, desiredSkills, permissions, instructionsBundle },
+    merged: { title, role, budgetMonthlyCents, desiredSkills, permissions, instructionsBundle, inferenceConnectionId: spec.defaults.inferenceConnectionId },
     snapshot: {
       templateKey: options.templateKey,
       templateVersion: options.templateVersion,

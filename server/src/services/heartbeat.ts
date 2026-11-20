@@ -2813,11 +2813,7 @@ export function heartbeatService(
           throw new ConfigurationIncompleteFailure(error instanceof Error ? error.message : "Configure this connection pool", { configurationIncomplete: { reason: "ai_connection_unavailable", companyId: agent.companyId, agentId: agent.id, responsibleUserId, actionUrl: `/agents/${agent.id}/runtime`, fingerprint: `ai-router:${requestedAiBinding.connectionId}` } });
         }
       }
-      // Domestic inference connections are BYOK conveniences: when the saved
-      // connection (or the responsible user's provider default) is gone, the
-      // run falls back to the environment's global credentials instead of
-      // failing admission. Existing providers keep hard-failure semantics.
-      if (aiBinding && isDomesticAiProvider(aiBinding.provider)
+      if (aiBinding && !routerHasPersistedInput && isDomesticAiProvider(aiBinding.provider)
         && !(await aiConnectionService(db).inferenceBindingAvailable(agent.companyId, responsibleUserId, aiBinding))) {
         await appendRunEvent(run, { eventType: "lifecycle", stream: "system", level: "warn",
           message: "The configured inference connection is unavailable; using environment credentials instead.",

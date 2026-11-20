@@ -64,13 +64,15 @@ describe("domestic AI provider registry", () => {
     expect(messages.error!.issues.map((issue) => issue.message)).toContain("The provider must match the endpoint’s API format.");
     const responses = createAiConnectionSchema.safeParse({ ...base, method: "api_key", apiKey: "fixture-key", routing: { kind: "gateway" as const, protocol: "responses" as const, auth: "bearer" as const, models: [] } });
     expect(responses.success).toBe(false);
+    const unauthenticated = createAiConnectionSchema.safeParse({ ...base, method: "api_key", routing: { kind: "gateway" as const, protocol: "chat" as const, auth: "none" as const, baseUrl: domesticDefaultRouting(provider).baseUrl, models: [] } });
+    expect(unauthenticated.success).toBe(false);
+    expect(unauthenticated.error!.issues.map((issue) => issue.message)).toContain("Domestic providers require an API key.");
   });
 
   it.each(DOMESTIC_AI_PROVIDERS)("derives the %s default routing with copied catalog models", (provider) => {
     const defaults = DOMESTIC_AI_PROVIDER_DEFAULTS[provider];
     const routing = domesticDefaultRouting(provider);
     expect(routing).toEqual({ kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: defaults.baseUrl, models: [...defaults.models] });
-    // Callers mutate the returned catalog; the registry's entries must stay intact.
     routing.models.splice(0, routing.models.length);
     expect(domesticDefaultRouting(provider).models).toEqual([...defaults.models]);
     expect(domesticDefaultRouting(provider, "https://override.example/v1").baseUrl).toBe("https://override.example/v1");

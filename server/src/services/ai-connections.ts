@@ -1270,12 +1270,6 @@ export function aiConnectionService(db: Db) {
       return [{ ...row, summary }];
     });
   }
-  /**
-   * Domestic inference connections fall back to environment credentials when
-   * their selection would fail on a missing connection or personal default.
-   * Existing providers keep their hard-failure semantics; this gate only
-   * decides the run's fallback before credentials are prepared.
-   */
   async function inferenceBindingAvailable(
     companyId: string,
     responsibleUserId: string | null,
@@ -1301,5 +1295,36 @@ export function aiConnectionService(db: Db) {
     return (await rows(companyId)).some(r =>
       r.connection.id === binding.connectionId && r.grant.id === binding.grantId && usable(r));
   }
-  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed, inferenceBindingAvailable };
+  async function templateInferenceBinding(input: {
+    companyId: string;
+    userId: string | null;
+    agentId: string;
+    adapterType: string;
+    model?: unknown;
+    runnerProvider?: unknown;
+    acpxAgent?: unknown;
+    connectionId: string;
+  }): Promise<AiConnectionBinding | undefined> {
+    const row = (await rows(input.companyId)).find(r =>
+      r.connection.id === input.connectionId
+      && r.grant.status === "active" && r.connection.enabled
+      && r.connection.status === "active" && r.connection.healthStatus === "ok");
+    if (!row) return undefined;
+    const metadata = aiConnectionMetadataSchema.parse(row.connection.config.ai);
+    const binding: AiConnectionBinding = {
+      provider: metadata.provider,
+      method: metadata.method,
+      mode: row.grant.kind === "organization" ? "shared" : "delegated",
+      connectionId: row.connection.id,
+      grantId: row.grant.id,
+    };
+    if (!isAiConnectionCompatible(binding, input.adapterType, input.model, input.runnerProvider, input.acpxAgent)) return undefined;
+    try {
+      await select({ ...input, binding });
+      return binding;
+    } catch {
+      return undefined;
+    }
+  }
+  return { list, selectDecision, selectFastResponse, selectImageGeneration, selectPromptInjectionPrevention, quotaAccounts, subscriptionAccounts: (companyId: string, userId: string) => quotaAccounts(companyId, userId, true), refreshQuotaCredential, select, credential, runtimeCredential, probeUsage, accountIdentity, save, setDefault, membership, markAuthenticationFailed, inferenceBindingAvailable, templateInferenceBinding };
 }

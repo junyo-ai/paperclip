@@ -254,9 +254,10 @@ export const createAiConnectionSchema = z
     if (v.routing && (v.method !== "api_key" || (v.routing.kind === "openrouter" && v.provider !== "openrouter") || (v.routing.kind === "bedrock" && v.provider !== "anthropic")))
       ctx.addIssue({ code: "custom", message: "Routing requires the matching provider and API authentication." });
     if (v.routing && ["gateway", "local"].includes(v.routing.kind) && v.provider !== (v.routing.protocol === "messages" ? "anthropic" : "openai")
-      // Domestic providers speak the OpenAI chat-completions format at their official endpoints.
       && !(v.routing.protocol === "chat" && isDomesticAiProvider(v.provider)))
       ctx.addIssue({ code: "custom", message: "The provider must match the endpoint’s API format." });
+    if (v.routing?.auth === "none" && isDomesticAiProvider(v.provider))
+      ctx.addIssue({ code: "custom", message: "Domestic providers require an API key." });
     if (v.routing?.auth === "none") {
       if (v.apiKey || v.loginSessionId) ctx.addIssue({ code: "custom", message: "Provide only the selected authentication method." });
       return;

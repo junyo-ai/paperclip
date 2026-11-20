@@ -1,11 +1,5 @@
 import type { AiProviderRouting } from "./ai-provider-routing.js";
 
-/**
- * China-hosted model providers, first-class registry entries (issues #14/#15).
- * API-key only; each routes chat-completions to its official endpoint unless
- * the connection supplies a base URL override. Model presets are catalog
- * entries for hire/templates, not an availability guarantee.
- */
 export const DOMESTIC_AI_PROVIDERS = [
   "deepseek",
   "zhipu",
@@ -55,7 +49,6 @@ export function isDomesticAiProvider(
   return (DOMESTIC_AI_PROVIDERS as readonly string[]).includes(provider);
 }
 
-/** A domestic provider falls back to its official endpoint when no base URL override is supplied. */
 export function domesticDefaultRouting(
   provider: DomesticAiProvider,
   baseUrlOverride?: string,

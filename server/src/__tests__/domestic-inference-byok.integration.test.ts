@@ -15,7 +15,6 @@ import { aiConnectionRoutes } from "../routes/ai-connections.js";
 import { aiConnectionService } from "../services/ai-connections.js";
 import { prepareManagedAiRuntime } from "../services/ai-connection-runtime.js";
 
-// External runs require an already migrated dedicated database ending in _test.
 const external = resolveExternalTestDatabaseUrl("PAPERCLIP_DOMESTIC_AI_TEST_DATABASE_URL");
 const support = external ? { supported: true, reason: undefined } : await getEmbeddedPostgresTestSupport();
 if (!support.supported) console.warn(`Skipping domestic AI PostgreSQL integration on this host: ${support.reason ?? "embedded PostgreSQL unavailable"}`);
@@ -59,7 +58,6 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
       { companyId: otherCompanyId, principalId: foreign, principalType: "user", status: "active", membershipRole: "owner" },
     ]);
     await db.insert(agents).values({ id: agentId, companyId, name: "Domestic runner", adapterType: "opencode_local" });
-    // The HTTP actor is chosen per request; memberships mirror the seeded rows.
     const app = express();
     app.use(express.json());
     app.use((req: Request, _res, next) => {
@@ -95,7 +93,6 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     expect(grant).toMatchObject({ kind: "organization", status: "active" });
     const installs = await db.select().from(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, created.body.connectionId));
     expect(installs).toEqual([expect.objectContaining({ targetType: "company", targetId: f.companyId })]);
-    // The stored credential uses the framework's encrypted secret material, never plaintext.
     const [secret] = await db.select().from(companySecrets).where(eq(companySecrets.companyId, f.companyId));
     const versions = await db.select().from(companySecretVersions).where(eq(companySecretVersions.secretId, secret.id));
     expect(versions.length).toBeGreaterThanOrEqual(1);
@@ -103,7 +100,7 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     expect(request_).toHaveBeenCalledTimes(1);
   });
 
-  it("applies a domestic base URL override and explicit model catalog without provider probing", async () => {
+  it("skips provider probing only for base URL overrides and still validates official-endpoint routing", async () => {
     const f = await fixture();
     const override = await request(f.app).post(f.base).send({
       ...sharedIntent("moonshot", "fixture-moonshot-key"),
@@ -114,6 +111,15 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     expect((await f.service.list(f.companyId, f.owner)).find(row => row.id === override.body.connectionId)?.routing).toEqual({
       ...domesticDefaultRouting("moonshot"), baseUrl: "https://gateway.internal/v1",
     });
+    request_.mockResolvedValueOnce(new Response("{}", { status: 401 }));
+    const rejected = await request(f.app).post(f.base).send({
+      ...sharedIntent("moonshot", "fixture-moonshot-key-2"),
+      routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://api.moonshot.cn/v1", models: [{ id: "custom-model" }] },
+    });
+    expect(rejected.status).toBe(422);
+    expect(JSON.stringify(rejected.body)).not.toContain("fixture-moonshot-key-2");
+    expect(String(request_.mock.calls[0]![0])).toBe("https://api.moonshot.cn/v1/models");
+    request_.mockResolvedValueOnce(new Response("{}", { status: 200 }));
     const custom = await request(f.app).post(f.base).send({
       ...sharedIntent("moonshot", "fixture-moonshot-key-2"),
       routing: { kind: "gateway", protocol: "chat", auth: "bearer", baseUrl: "https://api.moonshot.cn/v1", models: [{ id: "custom-model" }] },
@@ -122,7 +128,6 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     expect((await f.service.list(f.companyId, f.owner)).find(row => row.id === custom.body.connectionId)?.routing).toMatchObject({
       baseUrl: "https://api.moonshot.cn/v1", models: [{ id: "custom-model" }],
     });
-    expect(request_).not.toHaveBeenCalled();
   });
 
   it("projects the shared domestic connection into the opencode harness and strips ambient provider credentials", async () => {
@@ -150,19 +155,13 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     const f = await fixture();
     const saved = await f.service.save(f.companyId, f.owner, { ...sharedIntent("moonshot", "fixture-moonshot-key"), routing: domesticDefaultRouting("moonshot") }, "fixture-moonshot-key");
     const binding = { provider: "moonshot", method: "api_key", mode: "shared", connectionId: saved.connectionId, grantId: saved.grantId } satisfies AiConnectionBinding;
-    // Specified connection present: the run uses it.
     expect(await f.service.inferenceBindingAvailable(f.companyId, f.owner, binding)).toBe(true);
     expect(await f.service.inferenceBindingAvailable(f.otherCompanyId, f.foreign, binding)).toBe(false);
-    // Disabled connection: fall back to environment credentials.
     await db.update(toolConnections).set({ enabled: false }).where(eq(toolConnections.id, saved.connectionId));
     expect(await f.service.inferenceBindingAvailable(f.companyId, f.owner, binding)).toBe(false);
     await db.update(toolConnections).set({ enabled: true }).where(eq(toolConnections.id, saved.connectionId));
-    // Revoked grant: fall back to environment credentials.
     await db.update(connectionGrants).set({ status: "revoked", revokedAt: new Date() }).where(eq(connectionGrants.id, saved.grantId));
     expect(await f.service.inferenceBindingAvailable(f.companyId, f.owner, binding)).toBe(false);
-    // Responsible-user mode without a provider default: fall back. A personal
-    // domestic connection always carries routing, so it stays an explicit
-    // selection exactly like every other gateway connection.
     const responsible = { provider: "moonshot", method: "api_key", mode: "responsible_user" } satisfies AiConnectionBinding;
     expect(await f.service.inferenceBindingAvailable(f.companyId, f.owner, responsible)).toBe(false);
     const personal = await f.service.save(f.companyId, f.owner, {
@@ -171,6 +170,30 @@ describeDatabase("domestic inference BYOK with real PostgreSQL", () => {
     }, "fixture-personal-key");
     expect(await f.service.inferenceBindingAvailable(f.companyId, f.owner, responsible)).toBe(false);
     await expect(f.service.setDefault(f.companyId, f.owner, personal.grantId)).rejects.toThrow("Custom providers use an explicit connection selection");
+    expect(request_).not.toHaveBeenCalled();
+  });
+
+  it("resolves a template inference reference through the hiring company's admission and drops unusable ones", async () => {
+    const f = await fixture();
+    const saved = await f.service.save(f.companyId, f.owner, { ...sharedIntent("deepseek", "fixture-deepseek-key"), routing: domesticDefaultRouting("deepseek") }, "fixture-deepseek-key");
+    const resolve = (connectionId: string) => f.service.templateInferenceBinding({
+      companyId: f.companyId, userId: f.owner, agentId: f.agentId, adapterType: "opencode_local",
+      model: "deepseek-chat", connectionId,
+    });
+    expect(await resolve(saved.connectionId)).toEqual({
+      provider: "deepseek", method: "api_key", mode: "shared", connectionId: saved.connectionId, grantId: saved.grantId,
+    });
+    await db.update(toolConnections).set({ enabled: false }).where(eq(toolConnections.id, saved.connectionId));
+    expect(await resolve(saved.connectionId)).toBeUndefined();
+    await db.update(toolConnections).set({ enabled: true }).where(eq(toolConnections.id, saved.connectionId));
+    expect(await f.service.templateInferenceBinding({
+      companyId: f.otherCompanyId, userId: f.foreign, agentId: f.agentId, adapterType: "opencode_local",
+      model: "deepseek-chat", connectionId: saved.connectionId,
+    })).toBeUndefined();
+    expect(await f.service.templateInferenceBinding({
+      companyId: f.companyId, userId: f.owner, agentId: f.agentId, adapterType: "claude_local",
+      model: "deepseek-chat", connectionId: saved.connectionId,
+    })).toBeUndefined();
     expect(request_).not.toHaveBeenCalled();
   });
 

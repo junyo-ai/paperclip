@@ -14,7 +14,9 @@ const EXPECTED_BUNDLED_KEYS = [
   "paperclipai/bundled/product/paperclip-capsules",
   "paperclipai/bundled/product/wireframe",
   "paperclipai/bundled/quality/qa-acceptance",
+  "paperclipai/bundled/software-development/devpipeline-closure",
   "paperclipai/bundled/software-development/github-pr-workflow",
+  "paperclipai/bundled/software-development/review-loop",
 ];
 
 const EXPECTED_OPTIONAL_KEYS = [

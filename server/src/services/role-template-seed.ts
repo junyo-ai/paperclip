@@ -11,11 +11,12 @@ import {
 } from "./role-template-store.js";
 import contentMarketingSeed from "../role-template-seeds/content-marketing-specialist-v1.json" with { type: "json" };
 import softwareEngineerSeed from "../role-template-seeds/software-engineer-v1.json" with { type: "json" };
+import softwareEngineerV2Seed from "../role-template-seeds/software-engineer-v2.json" with { type: "json" };
 
 type RoleTemplateSeedFile = { key: string; spec: unknown };
 
-/** The two templates validated through real agent runs (design §5.5). */
-export const ROLE_TEMPLATE_SEEDS: RoleTemplateSeedFile[] = [contentMarketingSeed, softwareEngineerSeed];
+/** The templates validated through real agent runs (design §5.5); v2 adds the process-discipline enrichment from issue #18. */
+export const ROLE_TEMPLATE_SEEDS: RoleTemplateSeedFile[] = [contentMarketingSeed, softwareEngineerSeed, softwareEngineerV2Seed];
 
 export type RoleTemplateSeedOutcome =
   | "installed"

@@ -379,7 +379,7 @@ stateDiagram-v2
 Hire re-validates skill availability anyway (skills can be uninstalled after
 publish — §6.5), so publish is a fast gate, not the only one.
 
-### 5.5 Seed data for the two validated templates
+### 5.5 Seed data for the validated templates
 
 - Seed files live in-repo at `server/src/role-template-seeds/*.json`,
   shape `{ key, spec }` with `spec` matching §3 exactly. The normalized
@@ -389,8 +389,16 @@ publish — §6.5), so publish is a fast gate, not the only one.
   (`personaPrompt`, `skills[].reason` and `rationale` kept **verbatim** from
   the accepted JUN-2/JUN-3 deliverables; `defaults.notes` free text split
   into the typed fields).
+- Issue #18 added `software-engineer-v2` (key `software-engineer-v2`, v1
+  untouched and still installed): personaPrompt gains a compact development
+  loop contract (loop + red lines + closure definition, < 800 chars) and two
+  new bundled skills from the catalog —
+  `paperclipai/bundled/software-development/devpipeline-closure` and
+  `paperclipai/bundled/software-development/review-loop`. Project-specific
+  conventions deliberately stay out of the template; they ride the repo's
+  own `CLAUDE.md`/`AGENTS.md` via workspace clone.
 - `seedRoleTemplates(companyId, db)` in
-  `server/src/services/role-template-seed.ts` upserts both as **published
+  `server/src/services/role-template-seed.ts` upserts the seeds as **published
   version 1** rows (`sourceIssueId` set from the provenance issues) and is
   idempotent by key. **Skill-resolution gate**: if the company lacks any
   catalog skill referenced by a seed, the seed for that template is still

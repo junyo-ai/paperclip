@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageName": "@paperclipai/skills-catalog",
   "packageVersion": "0.3.1",
-  "generatedAt": "2026-11-09T20:56:52.178Z",
+  "generatedAt": "2026-11-21T16:59:21.162Z",
   "skills": [
     {
       "id": "paperclipai:bundled:docs:doc-maintenance",
@@ -383,6 +383,39 @@
       "contentHash": "sha256:32372dacaf62e93454b9855968c4eec96456ba78b509f450b3dfaa48e31ef356"
     },
     {
+      "id": "paperclipai:bundled:software-development:devpipeline-closure",
+      "key": "paperclipai/bundled/software-development/devpipeline-closure",
+      "kind": "bundled",
+      "category": "software-development",
+      "slug": "devpipeline-closure",
+      "name": "devpipeline-closure",
+      "description": "Run the development loop to closure — design → branch → implement → commit/push → PR → review → CI green → merge → post-hoc report, with hard red lines on staging, commit trailers, evidence-backed progress claims, and blocked-work escalation.",
+      "path": "catalog/bundled/software-development/devpipeline-closure",
+      "entrypoint": "SKILL.md",
+      "trustLevel": "markdown_only",
+      "compatibility": "compatible",
+      "defaultInstall": false,
+      "recommendedForRoles": [
+        "engineer"
+      ],
+      "requires": [],
+      "tags": [
+        "development-process",
+        "git",
+        "pull-requests",
+        "delivery"
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "kind": "skill",
+          "sizeBytes": 3038,
+          "sha256": "a8d92a9b2e2dabe2a12bc3ec4764efde705d4767d58233288091d35fb7686acf"
+        }
+      ],
+      "contentHash": "sha256:4a4f9a7350575ada0b95f9f341be902a360be9564fc999b7fb04e1411cfcae34"
+    },
+    {
       "id": "paperclipai:bundled:software-development:github-pr-workflow",
       "key": "paperclipai/bundled/software-development/github-pr-workflow",
       "kind": "bundled",
@@ -414,6 +447,39 @@
         }
       ],
       "contentHash": "sha256:90f278c89aa0711be150c1cd2456ca25620d02f36995b113ca9837d756a37f6c"
+    },
+    {
+      "id": "paperclipai:bundled:software-development:review-loop",
+      "key": "paperclipai/bundled/software-development/review-loop",
+      "kind": "bundled",
+      "category": "software-development",
+      "slug": "review-loop",
+      "name": "review-loop",
+      "description": "Drive PR review rounds with discipline — cap at 3 rounds, count unresolved threads via the API before each round, close out on low-priority leftovers, trigger @coderabbitai review manually on non-default bases, and fall back (Copilot/codex) when the review service is down.",
+      "path": "catalog/bundled/software-development/review-loop",
+      "entrypoint": "SKILL.md",
+      "trustLevel": "markdown_only",
+      "compatibility": "compatible",
+      "defaultInstall": false,
+      "recommendedForRoles": [
+        "engineer"
+      ],
+      "requires": [],
+      "tags": [
+        "code-review",
+        "pull-requests",
+        "github",
+        "process"
+      ],
+      "files": [
+        {
+          "path": "SKILL.md",
+          "kind": "skill",
+          "sizeBytes": 3027,
+          "sha256": "664befcf3e5aa5a630b227dc388702848bf4a1e2a23c26fa5b8682c338c89790"
+        }
+      ],
+      "contentHash": "sha256:2fb4568e46d6048eebe952e8f31ca41113ffb06526f17772c2b68821eeaf3900"
     },
     {
       "id": "paperclipai:optional:browser:agent-browser",

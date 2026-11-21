@@ -709,7 +709,7 @@ describeEmbeddedPostgres("company creation seeds role templates", () => {
     await tempDb?.cleanup();
   });
 
-  it("installs both seeds at company creation, gating on the bundled skill inventory", async () => {
+  it("installs all seeds at company creation, gating on the bundled skill inventory", async () => {
     const company = await companyService(db).create({ name: `Seed Co ${randomUUID().slice(0, 8)}` });
 
     const seeds = await db
@@ -717,7 +717,7 @@ describeEmbeddedPostgres("company creation seeds role templates", () => {
       .from(roleTemplates)
       .where(eq(roleTemplates.companyId, company.id));
     const byKey = new Map(seeds.map((row) => [row.key, row]));
-    expect([...byKey.keys()].sort()).toEqual(["content-marketing-specialist", "software-engineer"]);
+    expect([...byKey.keys()].sort()).toEqual(["content-marketing-specialist", "software-engineer", "software-engineer-v2"]);
 
     const marketing = byKey.get("content-marketing-specialist")!;
     expect(marketing.status).toBe("published");
@@ -725,8 +725,13 @@ describeEmbeddedPostgres("company creation seeds role templates", () => {
     const engineer = byKey.get("software-engineer")!;
     expect(engineer.status).toBe("deprecated");
     expect(engineer.deprecationReason).toContain(ROLE_TEMPLATE_GAP_REASON_PREFIX);
+    const engineerV2 = byKey.get("software-engineer-v2")!;
+    expect(engineerV2.status).toBe("deprecated");
+    expect(engineerV2.deprecationReason).toContain(ROLE_TEMPLATE_GAP_REASON_PREFIX);
+    expect(engineerV2.deprecationReason).toContain("devpipeline-closure");
+    expect(engineerV2.deprecationReason).toContain("review-loop");
 
-    for (const seed of [marketing, engineer]) {
+    for (const seed of [marketing, engineer, engineerV2]) {
       const [version] = await db
         .select()
         .from(roleTemplateVersions)
@@ -735,6 +740,6 @@ describeEmbeddedPostgres("company creation seeds role templates", () => {
     }
 
     const rerun = await seedRoleTemplates(company.id, db);
-    expect(rerun.map((result) => result.outcome)).toEqual(["already_present", "already_present"]);
+    expect(rerun.map((result) => result.outcome)).toEqual(["already_present", "already_present", "already_present"]);
   });
 });

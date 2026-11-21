@@ -29,7 +29,10 @@ CI-and-review pass, so spend rounds deliberately and know when to stop.
 - Query the PR's unresolved review threads via the API
   (`GET /repos/{owner}/{repo}/pulls/{number}/comments`, then the review
   threads endpoint) before triggering anything.
-- **Zero unresolved threads = no new round.** Close out instead.
+- **Zero unresolved threads = no new round — but only after the initial
+  review has completed.** A new PR has zero threads because nothing reviewed
+  it yet: if no review has run, trigger the first one; if a review is in
+  progress, wait for its result before deciding to close out.
 - Track rounds by `original_commit_id` on review comments: comments sharing an
   `original_commit_id` belong to the same round, so you can tell round 2
   feedback from re-asserted round 1 feedback.
@@ -39,8 +42,12 @@ CI-and-review pass, so spend rounds deliberately and know when to stop.
 - If the only remaining comments are low-priority (nits, optional cleanups,
   style preferences with no functional impact), fix them and close out. Do
   not trigger another review round to re-verify nit fixes.
-- Reply on every thread you resolve — "fixed in `<commit-sha>`" is enough —
-  so the count you computed actually reaches zero.
+- Reply on every thread you address with "fixed in `<commit-sha>`", then
+  resolve the thread explicitly (the `resolveReviewThread` GraphQL mutation
+  or the PR UI). A reply alone does not resolve a thread.
+- Re-query the unresolved count after resolving. If a thread only the
+  reviewer can resolve, ask them to resolve it; do not claim closure while
+  any thread is unresolved.
 
 ## Manual trigger mode
 

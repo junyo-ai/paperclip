@@ -11,6 +11,9 @@ import {
   companySkills,
   companySkillVersions,
   createDb,
+  heartbeatRuns,
+  toolProfileBindings,
+  toolProfiles,
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "../__tests__/helpers/embedded-postgres.js";
 import {
@@ -18,6 +21,7 @@ import {
   LESSON_CAPTURE_CHAT_TOOLS,
   type LessonCaptureChatSession,
 } from "./lesson-capture-chat-tools.js";
+import { createToolGatewayService } from "./tool-gateway.js";
 
 const LESSON = {
   domain: "git",
@@ -289,5 +293,106 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(result).toMatchObject({ recorded: true, assignedToAgent: false });
     const [agentRow] = await db.select().from(agents).where(eq(agents.id, f.agent.id));
     expect(agentRow.adapterConfig).toEqual({});
+  });
+
+  it("propose and record reject multiline lesson fields", async () => {
+    const f = await fixture();
+    const s = session(f.company.id, f.agent.id, { responsibleUserId: "admin-u" });
+    const multiline = { ...LESSON, trigger: "Push safely\nbefore release" };
+    const draft = await propose(s, multiline);
+    expect(draft).toMatchObject({ valid: false });
+    expect(draft.issues).toContainEqual(expect.objectContaining({ path: "trigger" }));
+    await expect(record(s, multiline)).rejects.toMatchObject({ status: 422 });
+    expect(await lessonsSkillRows(f.company.id)).toHaveLength(0);
+  });
+
+  it("record clears a stale version pin on the lessons skill assignment", async () => {
+    const f = await fixture();
+    const skillKey = `company/${f.company.id}/lessons-git`;
+    const pinnedVersionId = randomUUID();
+    await db
+      .update(agents)
+      .set({
+        adapterConfig: {
+          paperclipSkillSync: { desiredSkills: [{ key: skillKey, versionId: pinnedVersionId }] },
+        },
+      })
+      .where(eq(agents.id, f.agent.id));
+    const s = session(f.company.id, f.agent.id, { responsibleUserId: "admin-u" });
+    const result = await record(s, LESSON);
+    expect(result).toMatchObject({ recorded: true, assignedToAgent: true });
+    const [agentRow] = await db.select().from(agents).where(eq(agents.id, f.agent.id));
+    expect(
+      (agentRow.adapterConfig as Record<string, { desiredSkills?: string[] }>).paperclipSkillSync?.desiredSkills,
+    ).toEqual([skillKey]);
+  });
+
+  it("record keeps assignments for every domain recorded by the agent", async () => {
+    const f = await fixture();
+    const s = session(f.company.id, f.agent.id, { responsibleUserId: "admin-u" });
+    await record(s, LESSON);
+    await record(s, {
+      domain: "ci",
+      trigger: "Never skip the typecheck layer locally",
+      rule: "Run the layered typecheck before pushing.",
+      evidence: "A broken layer slipped through twice in one week.",
+    });
+    const [agentRow] = await db.select().from(agents).where(eq(agents.id, f.agent.id));
+    expect(
+      (agentRow.adapterConfig as Record<string, { desiredSkills?: string[] }>).paperclipSkillSync?.desiredSkills,
+    ).toEqual([
+      `company/${f.company.id}/lessons-git`,
+      `company/${f.company.id}/lessons-ci`,
+    ]);
+  });
+
+  it("resolves and executes the lesson tools through the gateway", async () => {
+    const f = await fixture();
+    const [run] = await db
+      .insert(heartbeatRuns)
+      .values({
+        companyId: f.company.id,
+        agentId: f.agent.id,
+        status: "running",
+        contextSnapshot: {},
+        responsibleUserId: "admin-u",
+      })
+      .returning();
+    const [profile] = await db
+      .insert(toolProfiles)
+      .values({
+        companyId: f.company.id,
+        profileKey: `lessons-all-${randomUUID().slice(0, 8)}`,
+        name: `Lessons profile ${randomUUID().slice(0, 8)}`,
+        defaultAction: "allow",
+      })
+      .returning();
+    await db.insert(toolProfileBindings).values({
+      companyId: f.company.id,
+      profileId: profile.id,
+      targetType: "agent",
+      targetId: f.agent.id,
+    });
+    const gateway = createToolGatewayService(db);
+    const gatewaySession = await gateway.createSession({
+      companyId: f.company.id,
+      agentId: f.agent.id,
+      runId: run.id,
+    });
+    const result = await gateway.executeTool({
+      sessionToken: gatewaySession.token,
+      tool: "lesson-capture:propose_lesson",
+      parameters: LESSON,
+    });
+    expect(result).toMatchObject({ status: "completed", tool: "lesson-capture:propose_lesson" });
+    expect(result.result).toMatchObject({
+      data: {
+        valid: true,
+        stored: false,
+        domain: "git",
+        alreadyCaptured: false,
+      },
+    });
+    expect(await lessonsSkillRows(f.company.id)).toHaveLength(0);
   });
 });

@@ -3205,12 +3205,14 @@ export function createToolGatewayService(
     const hasOnDemandTargets = connectedTools.some(isOnDemandRemoteTool);
     const virtualTools = hasOnDemandTargets ? VIRTUAL_TOOLS : [];
     const githubBotTools = await githubBotToolsForSession(db, session);
-    const tool = [...allTools(), ...connectedTools, ...virtualTools, ...githubBotTools, ...await slackToolsForSession(db, session), ...await spekoToolsForSession(db, session)]
+    const tool = [...allTools(), ...ROLE_TEMPLATE_CHAT_TOOLS, ...LESSON_CAPTURE_CHAT_TOOLS, ...connectedTools, ...virtualTools, ...githubBotTools, ...await slackToolsForSession(db, session), ...await spekoToolsForSession(db, session)]
       .filter(
         (candidate) =>
           session.agentId ||
           (candidate.providerType !== "paperclip_self" &&
-            candidate.providerType !== "paperclip_plugin"),
+            candidate.providerType !== "paperclip_plugin" &&
+            candidate.providerType !== "paperclip_role_template" &&
+            candidate.providerType !== "paperclip_lesson_capture"),
       )
       .find((candidate) => candidate.name === toolName);
     if (!tool) {

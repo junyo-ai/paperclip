@@ -38,15 +38,24 @@ import type {
 const LESSON_DOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const LESSON_SKILL_DESCRIPTION_LIMIT = 300;
 
+/** Entries are parsed back line-by-line, so every field must stay single-line. */
+const singleLine = (value: string) => !/[\r\n]/.test(value);
+
 const lessonInputSchema = z
   .object({
     domain: z.string().regex(LESSON_DOMAIN_PATTERN, {
       message:
         "Domain must be 1-40 chars of lowercase letters, digits, and dashes (e.g. git, ci, billing)",
     }),
-    trigger: z.string().trim().min(3).max(160),
-    rule: z.string().trim().min(3).max(600),
-    evidence: z.string().trim().min(3).max(600),
+    trigger: z.string().trim().min(3).max(160).refine(singleLine, {
+      message: "Trigger must be a single line.",
+    }),
+    rule: z.string().trim().min(3).max(600).refine(singleLine, {
+      message: "Rule must be a single line.",
+    }),
+    evidence: z.string().trim().min(3).max(600).refine(singleLine, {
+      message: "Evidence must be a single line.",
+    }),
   })
   .strict();
 
@@ -293,8 +302,10 @@ async function requireSponsoringCompanyAdmin(
 
 /**
  * A lessons skill only reaches an agent's runs through its desired-skills
- * preference. Add it (unpinned, so later lessons in the same skill ride along)
- * unless the agent already carries it.
+ * preference. Add it (unpinned, so later lessons in the same skill ride
+ * along) unless the agent already carries an unpinned entry; a stale version
+ * pin is cleared so new lessons in the skill are not skipped. The row lock
+ * serializes concurrent recordings so no assignment is lost.
  */
 async function ensureSkillAssignedToAgent(
   db: Db,
@@ -303,24 +314,35 @@ async function ensureSkillAssignedToAgent(
   skillKey: string,
 ): Promise<boolean> {
   if (!agentId) return false;
-  const [agent] = await db
-    .select({ adapterConfig: agents.adapterConfig })
-    .from(agents)
-    .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)));
-  if (!agent) return false;
-  const adapterConfig = (agent.adapterConfig ?? {}) as Record<string, unknown>;
-  const entries = readPaperclipSkillSyncPreference(adapterConfig).desiredSkillEntries;
-  if (entries.some((entry) => entry.key === skillKey)) return true;
-  await db
-    .update(agents)
-    .set({
-      adapterConfig: writePaperclipSkillSyncPreference(adapterConfig, [
-        ...entries,
-        { key: skillKey, versionId: null },
-      ]),
-    })
-    .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)));
-  return true;
+  return db.transaction(async (tx) => {
+    const [agent] = await tx
+      .select({ adapterConfig: agents.adapterConfig })
+      .from(agents)
+      .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)))
+      .for("update");
+    if (!agent) return false;
+    const adapterConfig = (agent.adapterConfig ?? {}) as Record<string, unknown>;
+    const entries = readPaperclipSkillSyncPreference(adapterConfig).desiredSkillEntries;
+    let changed = false;
+    const next = entries.map((entry) => {
+      if (entry.key !== skillKey) return entry;
+      if (!entry.versionId) return entry;
+      changed = true;
+      return { key: skillKey, versionId: null };
+    });
+    if (!entries.some((entry) => entry.key === skillKey)) {
+      next.push({ key: skillKey, versionId: null });
+      changed = true;
+    }
+    if (!changed) return true;
+    await tx
+      .update(agents)
+      .set({
+        adapterConfig: writePaperclipSkillSyncPreference(adapterConfig, next),
+      })
+      .where(and(eq(agents.companyId, companyId), eq(agents.id, agentId)));
+    return true;
+  });
 }
 
 export async function executeLessonCaptureTool(

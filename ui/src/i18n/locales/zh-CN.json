@@ -5,5 +5,683 @@
       "description": "通过创建公司开始。",
       "newCompany": "新公司"
     }
+  },
+  "common": {
+    "cancel": "取消",
+    "back": "返回",
+    "retry": "重试",
+    "close": "关闭",
+    "done": "完成",
+    "continue": "继续",
+    "saveExit": "保存并退出",
+    "settings": "设置",
+    "adapter": "适配器",
+    "model": "模型",
+    "status": "状态",
+    "harness": "框架",
+    "connection": "连接",
+    "environment": "环境",
+    "default": "默认"
+  },
+  "agent": {
+    "role": {
+      "ceo": "首席执行官",
+      "cto": "首席技术官",
+      "cmo": "首席营销官",
+      "cfo": "首席财务官",
+      "security": "安全",
+      "engineer": "工程师",
+      "designer": "设计师",
+      "pm": "项目经理",
+      "qa": "测试",
+      "devops": "DevOps",
+      "researcher": "研究员",
+      "general": "通用"
+    }
+  },
+  "roster": {
+    "breadcrumb": {
+      "agents": "智能体"
+    },
+    "noCompany": {
+      "streamlined": "请选择一个组织以查看智能体。",
+      "production": "请选择一个企业以查看智能体。"
+    },
+    "empty": {
+      "first": "创建你的第一个智能体，开始使用。"
+    },
+    "setUp": "设置",
+    "invalidChain": {
+      "aria": "汇报链无效"
+    },
+    "lastHeartbeat": {
+      "title": "上次心跳"
+    },
+    "chat": {
+      "aria": "与 {{name}} 聊天",
+      "button": "聊天",
+      "tooltip": "与此智能体聊天"
+    },
+    "noHierarchy": "尚未定义组织架构。",
+    "noMatch": {
+      "production": "没有符合所选筛选条件的智能体。"
+    },
+    "noMatchFilters": "没有符合这些筛选条件的智能体。",
+    "defaultModel": "默认模型",
+    "env": {
+      "local": "本地",
+      "paperclipHost": "Paperclip 主机",
+      "loading": "正在加载环境",
+      "managed": "由 Paperclip 托管",
+      "sandboxProvider": "{{provider}} 沙箱提供商",
+      "sandbox": "沙箱",
+      "unknown": "未知环境"
+    },
+    "live": "实时",
+    "viewMode": {
+      "aria": "视图模式"
+    },
+    "view": {
+      "list": "列表视图",
+      "org": "组织架构视图"
+    },
+    "newAgent": "新建智能体",
+    "loadAgents": {
+      "action": "加载智能体"
+    },
+    "bulkActions": {
+      "aria": "批量操作"
+    },
+    "selected": "已选择 {{n}} 项",
+    "hiddenByFilters": "{{n}} 项已被筛选隐藏",
+    "chooseHarness": "选择要编辑的框架",
+    "editConnectionModel": "编辑连接与模型",
+    "editN": "编辑 {{n}} 个{{label}}",
+    "clearSelection": {
+      "aria": "清除选择"
+    },
+    "loadingCurrentSettings": "正在加载当前智能体设置…",
+    "selectionChanged": "所选智能体已发生变化。请刷新名单并重新选择。",
+    "table": {
+      "aria": "智能体名单"
+    },
+    "selectAll": {
+      "aria": "选择所有可见且可编辑的智能体"
+    },
+    "count": {
+      "one": "{{n}} 个智能体",
+      "other": "{{n}} 个智能体"
+    },
+    "selectAgent": {
+      "aria": "选择 {{name}}"
+    },
+    "loadingEditor": "正在加载编辑器…",
+    "updated": {
+      "one": "已更新 {{n}} 个{{label}}智能体",
+      "other": "已更新 {{n}} 个{{label}}智能体"
+    },
+    "filters": {
+      "toolbar": {
+        "aria": "智能体筛选"
+      },
+      "button": {
+        "aria": "筛选智能体"
+      },
+      "activeTitle": "筛选：{{n}}",
+      "panel": {
+        "aria": "智能体筛选选项"
+      },
+      "title": "筛选",
+      "clear": "清除筛选",
+      "all": {
+        "model": "全部模型",
+        "status": "全部状态",
+        "harness": "全部框架",
+        "connection": "全部连接"
+      },
+      "previouslySelected": "之前选择的{{label}}",
+      "connectionError": "无法加载连接名称。"
+    },
+    "toolbar": {
+      "aria": "智能体控制",
+      "searchLabel": "搜索智能体",
+      "searchPlaceholder": "搜索智能体…",
+      "view": {
+        "aria": "智能体视图"
+      }
+    },
+    "bulk": {
+      "title": {
+        "one": "更新 {{n}} 个{{label}}智能体",
+        "other": "更新 {{n}} 个{{label}}智能体"
+      },
+      "otherUnchanged": {
+        "one": "其他已选的 {{n}} 个智能体不会更改。",
+        "other": "其他已选的 {{n}} 个智能体不会更改。"
+      },
+      "description": "更改其连接、默认模型，或两者都改。",
+      "agentsToUpdate": {
+        "aria": "要更新的智能体"
+      },
+      "partialFailure": "已更新 {{updated}} 个 · {{failed}} 个未能保存",
+      "partialFailureHint": "重试只会更新其余智能体。关闭并重新打开可查看已更改的设置。",
+      "changeConnection": "更改连接",
+      "differentConnections": "{{n}} 个不同的连接",
+      "keepCurrent": " · 保持不变",
+      "changeModel": "更改默认模型",
+      "differentModels": "{{n}} 个不同的模型",
+      "manualModelHint": "选择建议的模型，或输入你的框架支持的模型 ID。",
+      "newConnection": "新连接",
+      "currentConnection": "当前连接",
+      "availableOnConnections": "所有选中智能体的{{scope}}均可用。",
+      "checking": "正在检查连接与模型…",
+      "retryLoading": "重试加载选项",
+      "changesToApply": {
+        "aria": "将应用的更改",
+        "heading": "将应用的更改"
+      },
+      "to": {
+        "aria": "指向"
+      },
+      "harnessDefault": "框架默认值",
+      "alreadySet": "{{n}} 个已具有这些设置。",
+      "allAlreadySet": "所有选中的智能体都已具有这些设置。",
+      "appliesNote": "仅应用于之后的运行。正在运行的工作保持其当前设置。任务级模型覆盖保持不变。更改模型可能会开启新会话；现有会话在重置前可能保留其连接。",
+      "updating": "更新中…",
+      "retryAgents": {
+        "one": "重试 {{n}} 个智能体",
+        "other": "重试 {{n}} 个智能体"
+      },
+      "updateAgents": {
+        "one": "更新 {{n}} 个智能体",
+        "other": "更新 {{n}} 个智能体"
+      },
+      "loadError": "无法加载连接或模型",
+      "saveError": "无法保存该智能体。请重试。",
+      "incompatibleModel": "请选择与此连接兼容的模型。",
+      "modelNotAvailable": "{{model}}在此连接上不可用。请选择其他连接或更改默认模型。",
+      "routerError": "请在每个智能体的配置页上设置连接池。"
+    }
+  },
+  "hire": {
+    "error": {
+      "noCompany": "请选择一个组织来创建智能体。",
+      "loadCreated": "无法加载已创建的智能体。请返回智能体页面查看。",
+      "retryPrep": "无法重试计算机准备。",
+      "loadModels": "无法加载模型。请重试或手动输入模型 ID。",
+      "saveSetup": "无法保存智能体设置。",
+      "envSave": "无法保存环境。",
+      "credentialCleanup": "无法移除未使用的设置凭据。请先在密钥中移除它再重试。",
+      "createFailed": "无法创建智能体。",
+      "enterCursorModelId": "请输入准确的 Cursor Cloud 模型 ID。",
+      "enterKimiModelId": "请输入准确的 Kimi 模型 ID。",
+      "enterKimiApiKey": "请输入 KIMI_API_KEY 或选择一个组织密钥。",
+      "enterAntigravityModelId": "请选择或输入准确的 Google Antigravity 模型 ID。",
+      "refreshCopilotModels": "请刷新 Copilot 模型并选择一个可用模型，然后再创建此智能体。",
+      "acknowledgeBilling": "创建你的 Dot 智能体之前，请确认外部提供商计费。",
+      "enterModelFormat": "请选择或输入 provider/model 格式的模型。",
+      "enterRepoUrl": "请输入 GitHub 仓库 URL。",
+      "enterCursorKey": "请输入 Cursor API 密钥。",
+      "enterEnvKey": "请输入{{envKey}}或选择一个组织密钥。",
+      "enterGatewayUrl": "请输入 Hermes API 基础 URL。",
+      "enterKimiModel": "请输入 Kimi API 模型名称。",
+      "noAdapters": "此实例上没有可用的智能体适配器。"
+    },
+    "loadingCreated": "正在加载你的智能体…",
+    "loadingAgentSetup": "正在加载你的智能体设置…",
+    "creating": "正在创建你的智能体…",
+    "steps": {
+      "connect": "连接",
+      "runtime": "配置",
+      "saved": "确认",
+      "aria": "智能体设置步骤"
+    },
+    "connectModelTitle": "连接模型",
+    "localMachine": "本地机器",
+    "nativeRunner": "原生应用服务器运行器",
+    "preparingComputer": "正在准备你的智能体计算机…",
+    "retryPreparation": "重试准备",
+    "loadSetupData": {
+      "action": "加载智能体设置数据"
+    },
+    "antigravityPending": "Google Antigravity 尚不可用。你可以连接你的 Google 账号并查看设置。此智能体还无法完成设置或运行任务。模型和连接设置尚未保存到此智能体。",
+    "antigravityCandidate": "此实例已启用 Google Antigravity 候选框架用于测试。",
+    "changeAdapter": "更改适配器",
+    "adapterUnavailable": "此适配器不可用。请选择一个已启用的适配器。",
+    "noManagedEnvironment": "没有可用的托管环境。请先配置环境再继续。",
+    "loadingConnectionSettings": "正在加载连接设置…",
+    "saved": {
+      "pendingApproval": "智能体已提交审批",
+      "dotCreated": "你的 Dot 智能体已创建",
+      "finishing": "正在完成智能体设置",
+      "ready": "你的智能体已就绪",
+      "paused": "你的智能体已暂停",
+      "pendingApprovalDesc": "组织管理员必须先批准此智能体，它才能开始工作。",
+      "dotDesc": "在分配工作之前，请先在配置中配对你的 Dot 并测试事件送达。",
+      "finishingDesc": "Paperclip 正在准备并验证你的智能体。就绪后即可分配任务。",
+      "readyDesc": "当你准备好让此智能体工作时，即可分配任务。",
+      "pausedDesc": "在分配工作之前，请在配置中查看智能体的状态。"
+    },
+    "backAgentsList": "返回智能体列表",
+    "back": {
+      "agents": "返回智能体"
+    },
+    "editConfiguration": "编辑配置",
+    "pairDot": "配对 Dot",
+    "assignTask": "给 {{name}} 分配任务",
+    "configureTitle": "配置你的智能体",
+    "dotPairingNote": "创建此智能体，然后将其配对提示复制到你的 Dot。",
+    "dotMcpNote": "配对之前，请在实验性设置中启用助手连接（MCP）。",
+    "dotAllowUnmetered": "允许外部计费的提供商",
+    "dotUnmeteredHint": "Dot 不报告 token 用量或费用。Paperclip 无法强制执行提供商消费上限；已知的企业和智能体预算限制仍然适用。",
+    "thinkingEffort": "思考强度",
+    "effortAuto": "自动",
+    "apiKeyProvider": "API 密钥提供商",
+    "usingSavedKey": "使用已保存的密钥",
+    "required": "必填",
+    "optionalIfConfigured": "已配置则可选",
+    "getApiKey": "获取 API 密钥",
+    "orgSecretLabel": "或使用组织密钥",
+    "keysSavedNote": "完成设置时，新密钥会保存为组织密钥。",
+    "kimiKeyNote": " 此运行器请使用 Kimi Code API 密钥。",
+    "multiProviderNote": " 使用 {{key}}/模型 ID。",
+    "hermesBaseUrlLabel": "Hermes API 基础 URL",
+    "kimiModelName": "Kimi API 模型名称",
+    "kimiProtocol": "Kimi API 协议",
+    "kimiBaseUrl": "Kimi API 基础 URL",
+    "kimiBaseUrlHint": "可选覆盖你的提供商端点。",
+    "providerDefault": "提供商默认值",
+    "cursorExperimentalNote": "实验性。Cursor 托管此智能体的执行环境。无需 Paperclip 计算机。Cursor 管理云端命令权限；生效模型未经确认。",
+    "githubRepo": "GitHub 仓库",
+    "branch": "分支",
+    "repoDefault": "仓库默认值",
+    "defaultEnvironmentOption": "默认：{{label}}",
+    "retryEnvSave": "重试保存环境",
+    "connectModel": "连接模型",
+    "saving": "保存中…",
+    "finishSetup": "完成设置",
+    "loginHint": {
+      "cursor": "使用 Cursor API 密钥，或在所选环境的主机上运行 agent login。",
+      "gemini_local": "使用 Gemini API 密钥，或使用所选环境主机上已有的受支持 Gemini CLI 登录。",
+      "kimi_local": "使用 Kimi API 密钥和下方的模型设置，或在所选环境的主机上运行 kimi login。",
+      "grok_local": "Grok Build 使用其 CLI 登录。在所选环境的主机上运行 grok login，然后在此测试连接。",
+      "hermes_local": "使用提供商 API 密钥，或所选环境主机上已有的 Hermes 提供商配置。"
+    },
+    "basics": {
+      "progressAria": "新建智能体进度",
+      "titleName": "认识你的下一个智能体",
+      "titleAdapter": "选择一个适配器",
+      "descName": "从一个名字开始，让它成为你的。",
+      "descAdapter": "{{name}}应该如何工作？",
+      "nameLabel": "智能体名称",
+      "namePlaceholder": "例如 Darnold",
+      "loadingAdapters": "正在加载适配器…",
+      "loadAdapters": {
+        "action": "加载适配器列表"
+      },
+      "candidate": "候选",
+      "notAvailable": "尚不可用",
+      "advanced": "高级",
+      "experimentalHarness": "实验性框架",
+      "chooseNativeHarness": "选择一个原生框架…",
+      "grokBuild": "Grok Build（Paperclip Runner）",
+      "opencodeBuild": "OpenCode（Paperclip Runner）",
+      "saving": "保存中…",
+      "chooseAdapter": "选择适配器",
+      "configureAgent": "配置智能体"
+    },
+    "step": {
+      "name": "1. 名称",
+      "adapter": "2. 适配器"
+    },
+    "inviteExternal": "邀请外部智能体",
+    "builtin": {
+      "title": "设置{{name}}",
+      "configureTitle": "配置并启用{{name}}",
+      "provisionTitle": "预置{{name}}",
+      "configuring": "配置中…",
+      "notNow": "暂不",
+      "creates": "创建",
+      "rosterSuffix": "并将其加入你的名单，徽标为",
+      "badge": "内置",
+      "infoTail": "需要招聘审批的组织会将此操作加入董事会审批队列。",
+      "warningBanner": "此适配器需要先填写命令或端点字段才能运行。现在预置内置行，然后从完整的智能体配置中完成这些字段。",
+      "modelError": "模型“{{model}}”在{{adapter}}上不可用。请选择一个已知模型。",
+      "budgetLabel": "月度预算（可选）",
+      "budgetHint": "留空则不设上限。",
+      "perMonth": "/月",
+      "configureFailed": "内置智能体配置失败。"
+    },
+    "disabledLoading": "正在加载可用的智能体…",
+    "disabledLoadError": "无法加载实验性设置。请在刷新后重试。",
+    "disabledLoadErrorShort": "无法加载实验性设置。",
+    "dotDisabled": "在实验性设置中启用 OpenAI Dot 和助手连接（MCP）。",
+    "grokDisabled": "在实验性设置中启用 Grok Bot、助手连接（MCP）和 Paperclip Runner。",
+    "museDisabled": "在实验性设置中启用 Muse 和 Paperclip Runner，以连接你的个人 Muse。",
+    "fallbackCompanyName": "你的组织",
+    "dotTerminated": "此智能体已终止。请邀请另一个智能体来连接 Dot。",
+    "dotResumeRequired": "连接 Dot 之前请先恢复此智能体。",
+    "museMissingPublicOrigin": "此实例没有 Muse 所需的公开 HTTPS URL。请让你的实例管理员配置一个稳定的公开 HTTPS 地址，然后刷新设置。Muse 无法通过仅限本地的地址连接。",
+    "museOperatorRequired": "请使用具有公开 HTTPS URL 和企业操作员账号的已验证 Paperclip 实例。仅靠本地受信任访问无法连接 Muse。",
+    "museIdentityError": "无法确认你的账号。请刷新以继续 Muse 设置。",
+    "preset": {
+      "dot": {
+        "name": "Dot",
+        "description": "ChatGPT 中的你的 Dot"
+      },
+      "grok_bot": {
+        "name": "Grok Bot",
+        "description": "Grok 中已有的 Bot"
+      },
+      "muse": {
+        "name": "Muse — 个人智能体",
+        "description": "你在 muse.ai 的个人 Muse"
+      },
+      "hermes": {
+        "name": "Hermes",
+        "description": "已有的 Hermes 智能体"
+      },
+      "other": {
+        "name": "其他",
+        "description": "任何可连接到 Paperclip 的智能体"
+      }
+    },
+    "dotChecks": {
+      "aria": "Dot 连接检查",
+      "connected": {
+        "title": "已连接到 Paperclip",
+        "description": "你的 Dot 已连接到此智能体。"
+      },
+      "updates": {
+        "title": "任务更新已启用",
+        "description": "你的 Dot 已订阅新的任务和消息。"
+      },
+      "test": {
+        "title": "测试事件已确认",
+        "description": "你的 Dot 已收到我们的测试并回复了 Paperclip。"
+      }
+    },
+    "dotMsg": {
+      "agentUnavailable": "连接检查已通过，但此智能体无法接收任务。请在 Paperclip 中解决该智能体的设置阻碍。",
+      "updatesPaused": "连接更新已暂停。请重新连接以查看最新状态。",
+      "promptReplaced": "此设置提示已在其他窗口被替换。请创建新提示以继续。",
+      "eventTimeout": "你的 Dot 已连接，但尚未确认测试事件。请让它检查 Paperclip，然后重试。",
+      "finishing": "你的 Dot 已确认测试事件。Paperclip 正在完成智能体设置。",
+      "ready": "你的 Dot 已可以接收任务。消息可以双向传递。",
+      "waiting": "正在关注你的 Dot。更新会自动显示在这里。",
+      "connected": "你的 Dot 已连接。正在等待它启用任务更新。",
+      "confirmWaiting": "正在等待你的 Dot 确认测试事件。不会创建任何任务。"
+    },
+    "srComplete": "：已完成",
+    "srAttention": "：需要注意",
+    "srProgress": "：进行中",
+    "srWaiting": "：等待中",
+    "museChecks": {
+      "aria": "Muse 连接检查",
+      "paired": {
+        "title": "已与 Paperclip 配对",
+        "description": "Paperclip 已授权范围受限的 Muse 智能体连接。"
+      },
+      "receiver": {
+        "title": "检测到接收器",
+        "description": "Paperclip 观察到一次公开接收器检查。只有经过身份验证的回复才能确认 Muse 可以工作。"
+      },
+      "reply": {
+        "title": "后台回复已验证",
+        "description": "Muse 回复了一次独立的后台测试。"
+      }
+    },
+    "museMsg": {
+      "offline": "连接更新已暂停。请刷新以查看最新证据。",
+      "disconnected": "已断开。这些是最后观察到的连接检查。检测器清理和工作器停止证据仍然相互独立。",
+      "expired": "此 Muse 连接已过期。请使用新的设置提示重新连接 Muse。之前的检查不会恢复访问。",
+      "disabled": "Muse 已禁用。这些是最后观察到的连接检查；无法开始新工作。",
+      "promptReplaced": "此设置提示已被替换或已过期。请创建新的提示以继续。",
+      "agentUnavailable": "连接检查已通过。请在分配任务之前解决此智能体的设置或审批阻碍。",
+      "noResponse": "最近没有响应。请打开 Muse 检查当前会话和主机名权限，然后再次测试。沉默并不能确定存在权限问题。",
+      "testing": "正在等待 Muse 回复当前的后台测试。",
+      "ready": "Muse 已可以开始工作。所有连接检查和智能体设置均已通过。",
+      "checksPassed": "所有连接检查已通过。Paperclip 正在完成智能体设置。",
+      "watchPairing": "正在等待 Muse 配对。请将设置提示复制到你当前的 Muse 会话中。",
+      "waitingReceiver": "Muse 已配对。正在等待第一次持久化的接收器联络。",
+      "waitingReply": "已检测到接收器。正在等待 Muse 回复后台测试。"
+    },
+    "testBackgroundReply": "测试后台回复",
+    "refreshConnection": "刷新连接",
+    "openMuse": "打开 Muse",
+    "museToolsNote": "Muse 使用其自身已批准的工具。Paperclip 无法获取提供商用量和费用。",
+    "museLagNote": "接收器联络会分批持久化，可能延迟。设置绝不会创建任务。提供商用量和费用不可用。",
+    "roleLabel": "角色",
+    "progress": {
+      "agentUnavailable": "智能体不可用",
+      "updatesPaused": "更新已暂停",
+      "needsAttention": "需要注意",
+      "finishing": "正在完成设置…",
+      "connecting": "连接中…",
+      "confirming": "正在确认连接…"
+    },
+    "title": {
+      "invite": "邀请外部智能体",
+      "museConnected": "Muse 已连接",
+      "inviteMuse": "邀请你的 Muse",
+      "connectMuse": "连接你的 Muse",
+      "dotConnected": "你的 Dot 已连接",
+      "connectDot": "连接你的 Dot",
+      "inviteHermes": "邀请你的 Hermes 智能体",
+      "inviteAgent": "邀请你的智能体"
+    },
+    "desc": {
+      "invite": "把你已经在用的智能体带入{{company}}。",
+      "museDetails": "在{{company}}中为你的个人 Muse 命名并设定角色。",
+      "museAwaiting": "Muse 需要一个具有公开 HTTPS URL 和企业操作员账号的已验证 Paperclip 实例。",
+      "museReady": "Muse 可以接收任务并与{{company}}协作。",
+      "museChecking": "我们正在检查此实例能否准备 Muse 设置。",
+      "musePrompt": "将设置提示粘贴到你当前的 Muse 会话中。如果 Muse 询问，请完成“连接 Paperclip”，然后批准此 Paperclip 主机名。Muse 会将连接凭据保存在其安全保险库中。主机名权限适用于未来的请求。",
+      "dotReady": "你的 Dot 现在可以接收任务并与{{company}}协作。",
+      "dotAgentUnavailable": "你的 Dot 已连接。此智能体必须先在 Paperclip 中可用，才能接收任务。",
+      "dotFinishing": "你的 Dot 已连接并确认任务更新。Paperclip 正在为接收任务做准备。",
+      "dotConnecting": "你的 Dot 已连接。我们正在检查任务更新能否双向传递。",
+      "dot": "复制设置提示并发送给你在 ChatGPT 中的 Dot。你的 Dot 会自行连接；我们会在这里关注进展。",
+      "inviteGeneric": "请复制邀请提示并发送给你的{{kind}}智能体。在其准备好后，在 Paperclip 中批准其加入请求。",
+      "approvalPending": "组织管理员需要先批准此智能体，{{kind}}才能连接。批准后此页面会更新。",
+      "inviteInfo": "邀请包含你的智能体加入{{company}}所需的一切。你可以在授予访问权限之前审查其请求。",
+      "sendMuse": "将整个提示发送到你当前的 Muse 会话。",
+      "sendDotChatgpt": "将整个提示发送给你在 ChatGPT 中的 Dot。",
+      "sendAgent": "将整个提示发送给你的智能体。"
+    },
+    "hermesKind": "Hermes ",
+    "kindMuse": "Muse",
+    "kindDot": "Dot",
+    "loadingMuseInvite": "正在加载 Muse 邀请…",
+    "loadingMuseSetup": "正在加载 Muse 设置…",
+    "preparingInvite": "正在准备你的邀请…",
+    "dotProviderNote": "Dot 使用你的 OpenAI 账号。提供商用量和费用不会报告给 Paperclip。",
+    "retryTestEvent": "重试测试事件",
+    "reconnectUpdates": "重新连接更新",
+    "reviewApproval": "审查审批",
+    "preparing": "准备中…",
+    "loadingSetup": "正在加载设置…",
+    "refreshSetup": "刷新设置",
+    "reconnectMuse": "重新连接 Muse",
+    "newPrompt": "创建新提示",
+    "copySetupPrompt": "复制设置提示",
+    "copyInvitePrompt": "复制邀请提示",
+    "waitingForDot": "正在等待 Dot…"
+  },
+  "settings": {
+    "fallbackOrganization": "组织",
+    "breadcrumb": {
+      "companyFallback": "公司"
+    },
+    "archived": {
+      "title": "{{name}}已归档",
+      "switched": "已切换到{{name}}。",
+      "unarchiveHint": "你可以在此列表中取消归档。"
+    },
+    "noCompany": "尚未选择组织。请从上方切换器中选择一个组织。",
+    "section": {
+      "general": "常规",
+      "hiring": "招聘",
+      "decisions": "决策"
+    },
+    "orgName": {
+      "label": "组织名称",
+      "hint": "组织的显示名称。",
+      "renameNote": "重命名可能会更改该公司的任务 ID 前缀。现有任务 ID 将被重新编号，旧任务链接将失效。"
+    },
+    "description": {
+      "label": "描述",
+      "hint": "组织资料中显示的可选描述。",
+      "placeholder": "可选的组织描述"
+    },
+    "logo": {
+      "label": "徽标",
+      "hint": "上传 PNG、JPEG、WEBP、GIF 或 SVG 格式的徽标图片。"
+    },
+    "removing": "移除中…",
+    "removeLogo": "移除徽标",
+    "uploadingLogo": "正在上传徽标…",
+    "saving": "保存中…",
+    "saveChanges": "保存更改",
+    "saved": "已保存",
+    "hiring": {
+      "requireApproval": {
+        "label": "新招聘需要董事会审批",
+        "hint": "新智能体的招聘将保持待定状态，直到董事会批准。"
+      }
+    },
+    "decisions": {
+      "saveNote": "选择负责人后会立即保存。",
+      "defaultOwner": {
+        "label": "默认决策负责人",
+        "hint": "当卡片需要负责人但没有明确归属时，会进入该用户的“For you”列表。保持“未分配”可将无主卡片留在可认领池中。",
+        "unset": "未分配（无默认负责人）",
+        "error": "无法保存默认决策负责人。"
+      },
+      "budgetOwner": {
+        "label": "预算负责人",
+        "hint": "预算硬停止也会进入该用户的“For you”列表，并提供“提高上限”和“保持暂停”操作。公司视图仍会向每位操作者显示该卡片。",
+        "unset": "无预算负责人（仅公司视图）",
+        "error": "无法保存预算负责人。"
+      },
+      "saving": "保存中…"
+    },
+    "dangerZone": {
+      "title": "危险区",
+      "paragraph": "归档该组织后，它将从侧边栏中隐藏。此操作会持久化到数据库中。"
+    },
+    "archiveConfirm": "确定归档组织“{{name}}”吗？它将从侧边栏中隐藏。",
+    "archiving": "归档中…",
+    "alreadyArchived": "已归档",
+    "archiveOrg": "归档组织",
+    "profile": {
+      "title": "个人资料",
+      "boardFallback": "董事会",
+      "selectOrgForAvatar": "上传头像前请先选择一个组织。",
+      "loading": "正在加载个人资料…",
+      "loadAction": "加载你的个人资料",
+      "failedToLoad": "加载个人资料失败。",
+      "uploadHintOrg": "存储在{{name}}的 Paperclip 文件存储中。",
+      "uploadHintNoOrg": "选择一个组织以将头像上传到 Paperclip 存储中。",
+      "description": "控制你的账户在侧边栏和其他看板界面中的显示方式。",
+      "changePhoto": "更换照片",
+      "uploadPhoto": "上传照片",
+      "remove": "移除",
+      "noEmail": "无邮箱",
+      "clickAvatar": "点击头像可上传新图片。",
+      "displayName": {
+        "label": "显示名称",
+        "hint": "显示在侧边栏账户页脚和评论作者区域。"
+      },
+      "email": {
+        "label": "邮箱",
+        "hint": "邮箱由你的登录会话管理，此处为只读。"
+      },
+      "save": "保存个人资料"
+    },
+    "sidebar": {
+      "backToApp": "返回应用"
+    },
+    "nav": {
+      "members": "成员",
+      "secrets": "密钥",
+      "environments": "环境",
+      "connections": "连接",
+      "access": "访问控制",
+      "export": "导出",
+      "import": "导入",
+      "experimental": "实验性",
+      "plugins": "插件",
+      "adapters": "适配器"
+    },
+    "general": {
+      "loading": "正在加载常规设置…",
+      "loadAction": "加载常规设置",
+      "descriptionTopics": "配置实例级偏好设置，包括{{topics}}。",
+      "descriptionPlain": "配置实例级偏好设置。",
+      "topicJoin3": "{{a}}、{{b}}和{{c}}",
+      "topicJoin2": "{{a}}和{{b}}"
+    },
+    "topics": {
+      "logDisplay": "日志显示",
+      "backupRetention": "备份保留",
+      "dataSharing": "数据共享"
+    },
+    "deployment": {
+      "title": "部署与认证",
+      "localTrusted": "本地信任模式为本地操作者优化。浏览器请求以本地看板上下文运行，无需登录。",
+      "public": "认证公开模式需要登录才能访问看板，适用于公开 URL。",
+      "private": "认证私有模式需要登录，适用于局域网、VPN 或其他私有网络部署。",
+      "authReadiness": "认证就绪状态",
+      "bootstrapStatus": "引导状态",
+      "bootstrapInvite": "引导邀请",
+      "setupRequired": "需要初始设置"
+    },
+    "status": {
+      "ready": "就绪",
+      "notReady": "未就绪",
+      "active": "有效",
+      "none": "无"
+    },
+    "censor": {
+      "title": "在日志中隐去用户名",
+      "description": "隐藏主目录路径等操作者可见日志输出中的用户名部分。路径之外的独立用户名提及尚未在实时记录视图中屏蔽。默认关闭。",
+      "toggleAria": "切换用户名日志隐去"
+    },
+    "backup": {
+      "title": "备份保留",
+      "description": "配置自动数据库备份的保留时长。备份大约每小时运行一次，并使用 gzip 压缩。每日窗口内保留所有备份；超出后，每周保留一份、每月保留一份。",
+      "daily": "每日",
+      "weekly": "每周",
+      "monthly": "每月",
+      "nDays": "{{n}} 天",
+      "oneWeek": "1 周",
+      "nWeeks": "{{n}} 周",
+      "oneMonth": "1 个月",
+      "nMonths": "{{n}} 个月"
+    },
+    "feedback": {
+      "title": "AI 反馈共享",
+      "description": "控制点赞和点踩投票是否可以将对应的 AI 输出发送给 Paperclip Labs。投票始终保存在本地。",
+      "terms": "阅读我们的服务条款",
+      "promptNote": "尚未保存默认值。下次点赞或点踩时会询问一次，然后在此保存你的选择。",
+      "allow": "始终允许",
+      "allowDesc": "自动共享投票对应的 AI 输出。",
+      "deny": "不允许",
+      "denyDesc": "投票对应的 AI 输出仅保留在本地。",
+      "retest": {
+        "a": "要在本地开发中重新测试首次使用提示，请移除",
+        "b": "键（位于本实例的",
+        "c": "JSON 行中），或将其设回",
+        "d": "。未设置与",
+        "e": "均表示尚未选择默认值。"
+      }
+    },
+    "signOut": {
+      "title": "退出登录",
+      "description": "退出此 Paperclip 实例。你将被重定向到登录页面。",
+      "signingOut": "正在退出…",
+      "button": "退出登录"
+    }
   }
 }

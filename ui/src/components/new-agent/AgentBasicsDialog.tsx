@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { QueryErrorState, useQueryView } from "../QueryView";
+import { useTranslation } from "@/i18n";
 
 export type AgentBasics = {
   name: string;
@@ -61,6 +62,7 @@ export function AgentBasicsDialog({
   onInvite?: () => void;
 }) {
   const id = useId();
+  const { t } = useTranslation();
   const { selectedCompanyId: companyId } = useCompany();
   const cache = useQueryClient();
   const appearanceDraft = useAgentAppearanceDraft(`${companyId}:new-agent`);
@@ -121,7 +123,7 @@ export function AgentBasicsDialog({
     setSaving(true);
     setSaveError(null);
     try {
-      if (!companyId) throw new Error("Select an organization to create an agent.");
+      if (!companyId) throw new Error(t("hire.error.noCompany", { defaultValue: "Select an organization to create an agent." }));
       let agent = saved.current;
       if (!agent && setupAgentId) agent = await agentsApi.get(setupId.current, companyId);
       const creatingRecord = !agent;
@@ -130,7 +132,7 @@ export function AgentBasicsDialog({
         const leader = existing.find(item => item.role === "ceo" && item.status !== "terminated");
         const provisionalAdapter = adapters?.some(item => item.type === "process" && item.disabled)
           ? choices[0]?.type : "process";
-        if (!provisionalAdapter) throw new Error("No agent adapters are available on this instance.");
+        if (!provisionalAdapter) throw new Error(t("hire.error.noAdapters", { defaultValue: "No agent adapters are available on this instance." }));
         // This adapter is provisional; the setup hold prevents execution.
         agent = await agentsApi.create(companyId, {
           setupId: setupId.current, name: name.trim(), appearance: appearanceDraft.appearance,
@@ -176,7 +178,7 @@ export function AgentBasicsDialog({
       else onContinue({ name: agent.name, adapterType: nextAdapter, runnerProvider: nextProvider,
         runner: nextRunner, setupAgentId: agent.id });
     } catch (cause) {
-      if (active.current) setSaveError(cause instanceof Error ? cause.message : "Could not save agent setup.");
+      if (active.current) setSaveError(cause instanceof Error ? cause.message : t("hire.error.saveSetup", { defaultValue: "Could not save agent setup." }));
     } finally {
       busy.current = false;
       if (active.current) setSaving(false);
@@ -197,18 +199,18 @@ export function AgentBasicsDialog({
       >
         <div
           className="flex items-center gap-2 px-6 py-5 text-xs text-muted-foreground"
-          aria-label="New agent progress"
+          aria-label={t("hire.basics.progressAria", { defaultValue: "New agent progress" })}
         >
           <span
             className={cn(step === "name" && "font-medium text-foreground")}
           >
-            1. Name
+            {t("hire.step.name", { defaultValue: "1. Name" })}
           </span>
           <ChevronRight className="size-3" />
           <span
             className={cn(step === "adapter" && "font-medium text-foreground")}
           >
-            2. Adapter
+            {t("hire.step.adapter", { defaultValue: "2. Adapter" })}
           </span>
         </div>
         <form
@@ -224,27 +226,27 @@ export function AgentBasicsDialog({
               <div className="space-y-2">
                 <DialogTitle className="text-3xl font-semibold tracking-tight">
                   {step === "name"
-                    ? "Meet your next agent"
-                    : "Choose an adapter"}
+                    ? t("hire.basics.titleName", { defaultValue: "Meet your next agent" })
+                    : t("hire.basics.titleAdapter", { defaultValue: "Choose an adapter" })}
                 </DialogTitle>
                 <DialogDescription className="text-base">
                   {step === "name"
-                    ? "Start with a name. Make them your own."
-                    : `How should ${name.trim()} work?`}
+                    ? t("hire.basics.descName", { defaultValue: "Start with a name. Make them your own." })
+                    : t("hire.basics.descAdapter", { name: name.trim(), defaultValue: "How should {{name}} work?" })}
                 </DialogDescription>
               </div>
             </div>
             {step === "name" ? (
               <div className="space-y-2">
                 <label htmlFor={id} className="text-sm font-medium">
-                  Agent name
+                  {t("hire.basics.nameLabel", { defaultValue: "Agent name" })}
                 </label>
                 <Input
                   id={id}
                   autoFocus
                   disabled={saving}
                   maxLength={100}
-                  placeholder="e.g. Darnold"
+                  placeholder={t("hire.basics.namePlaceholder", { defaultValue: "e.g. Darnold" })}
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   className="h-12 text-base"
@@ -256,23 +258,23 @@ export function AgentBasicsDialog({
                     className="px-0 text-muted-foreground"
                     onClick={onInvite}
                   >
-                    Invite an external agent
+                    {t("hire.inviteExternal", { defaultValue: "Invite an external agent" })}
                   </Button>
                 )}
               </div>
             ) : (
               <fieldset className="space-y-4">
-                <legend className="sr-only">Adapter</legend>
+                <legend className="sr-only">{t("common.adapter", { defaultValue: "Adapter" })}</legend>
                 {adaptersView.kind === "loading" || adaptersView.kind === "reconnecting" ? (
                   <p role="status" className="text-sm text-muted-foreground">
-                    Loading adapters…
+                    {t("hire.basics.loadingAdapters", { defaultValue: "Loading adapters…" })}
                   </p>
                 ) : null}
                 {adaptersView.kind === "error" ? (
                   <QueryErrorState
                     size="inline"
                     error={adaptersView.error}
-                    action="load the adapter list"
+                    action={t("hire.basics.loadAdapters.action", { defaultValue: "load the adapter list" })}
                     onRetry={adaptersView.retry}
                     retrying={adaptersView.isFetching}
                   />
@@ -307,7 +309,7 @@ export function AgentBasicsDialog({
                             {display.label}
                           </span>
                           {adapter.type === "antigravity_runtime" && !antigravityQualified && (
-                            <span className="text-xs text-muted-foreground">{antigravityCandidate ? "Candidate" : "Not available yet"}</span>
+                            <span className="text-xs text-muted-foreground">{antigravityCandidate ? t("hire.basics.candidate", { defaultValue: "Candidate" }) : t("hire.basics.notAvailable", { defaultValue: "Not available yet" })}</span>
                           )}
                           {adapterType === adapter.type && (
                             <Check className="absolute right-2 top-2 size-3.5" />
@@ -318,16 +320,16 @@ export function AgentBasicsDialog({
                   })}
                 </div>
                 {experimentalRunnerAvailable && <details className="space-y-3">
-                  <summary className="cursor-pointer text-sm text-muted-foreground">Advanced</summary>
+                  <summary className="cursor-pointer text-sm text-muted-foreground">{t("hire.basics.advanced", { defaultValue: "Advanced" })}</summary>
                   <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">Experimental harness</label>
-                    <SelectPopover aria-label="Experimental harness"
+                    <label className="text-sm text-muted-foreground">{t("hire.basics.experimentalHarness", { defaultValue: "Experimental harness" })}</label>
+                    <SelectPopover aria-label={t("hire.basics.experimentalHarness", { defaultValue: "Experimental harness" })}
                       value={adapterType === "paperclip_runner" ? runnerProvider : ""}
-                      placeholder="Choose a native harness…"
+                      placeholder={t("hire.basics.chooseNativeHarness", { defaultValue: "Choose a native harness…" })}
                       onValueChange={provider => { setRunnerProvider(provider); setAdapterType("paperclip_runner"); }}
                       options={[
-                        { value: "grok", label: "Grok Build (Paperclip Runner)" },
-                        { value: "opencode", label: "OpenCode (Paperclip Runner)" },
+                        { value: "grok", label: t("hire.basics.grokBuild", { defaultValue: "Grok Build (Paperclip Runner)" }) },
+                        { value: "opencode", label: t("hire.basics.opencodeBuild", { defaultValue: "OpenCode (Paperclip Runner)" }) },
                       ]} />
                   </div>
                 </details>}
@@ -343,11 +345,11 @@ export function AgentBasicsDialog({
               onClick={() => (step === "name" ? onClose() : setStep("name"))}
             >
               {step === "name" ? (
-                "Cancel"
+                t("common.cancel", { defaultValue: "Cancel" })
               ) : (
                 <>
                   <ArrowLeft className="size-4" />
-                  Back
+                  {t("common.back", { defaultValue: "Back" })}
                 </>
               )}
             </Button>
@@ -355,7 +357,7 @@ export function AgentBasicsDialog({
               type="submit"
               disabled={saving || !name.trim() || (step === "adapter" && !validAdapter)}
             >
-              {saving ? "Saving…" : step === "name" ? "Choose adapter" : "Configure agent"}
+              {saving ? t("hire.basics.saving", { defaultValue: "Saving…" }) : step === "name" ? t("hire.basics.chooseAdapter", { defaultValue: "Choose adapter" }) : t("hire.basics.configureAgent", { defaultValue: "Configure agent" })}
               <ArrowRight className="size-4" />
             </Button>
           </div>

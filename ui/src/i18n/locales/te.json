@@ -5,5 +5,683 @@
       "description": "కంపెనీని సృష్టించడం ద్వారా ప్రారంభించండి.",
       "newCompany": "కొత్త కంపెనీ"
     }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "back": "Back",
+    "retry": "Retry",
+    "close": "Close",
+    "done": "Done",
+    "continue": "Continue",
+    "saveExit": "Save & exit",
+    "settings": "Settings",
+    "adapter": "Adapter",
+    "model": "Model",
+    "status": "Status",
+    "harness": "Harness",
+    "connection": "Connection",
+    "environment": "Environment",
+    "default": "Default"
+  },
+  "agent": {
+    "role": {
+      "ceo": "CEO",
+      "cto": "CTO",
+      "cmo": "CMO",
+      "cfo": "CFO",
+      "security": "Security",
+      "engineer": "Engineer",
+      "designer": "Designer",
+      "pm": "PM",
+      "qa": "QA",
+      "devops": "DevOps",
+      "researcher": "Researcher",
+      "general": "General"
+    }
+  },
+  "roster": {
+    "breadcrumb": {
+      "agents": "Agents"
+    },
+    "noCompany": {
+      "streamlined": "Select an organization to view agents.",
+      "production": "Select a company to view agents."
+    },
+    "empty": {
+      "first": "Create your first agent to get started."
+    },
+    "setUp": "Set up",
+    "invalidChain": {
+      "aria": "Invalid reporting chain"
+    },
+    "lastHeartbeat": {
+      "title": "Last heartbeat"
+    },
+    "chat": {
+      "aria": "Chat with {{name}}",
+      "button": "Chat",
+      "tooltip": "chat with this agent"
+    },
+    "noHierarchy": "No organizational hierarchy defined.",
+    "noMatch": {
+      "production": "No agents match the selected filters."
+    },
+    "noMatchFilters": "No agents match these filters.",
+    "defaultModel": "Default model",
+    "env": {
+      "local": "Local",
+      "paperclipHost": "Paperclip host",
+      "loading": "Loading environment",
+      "managed": "Managed by Paperclip",
+      "sandboxProvider": "{{provider}} sandbox provider",
+      "sandbox": "Sandbox",
+      "unknown": "Unknown environment"
+    },
+    "live": "Live",
+    "viewMode": {
+      "aria": "View mode"
+    },
+    "view": {
+      "list": "List view",
+      "org": "Org chart view"
+    },
+    "newAgent": "New Agent",
+    "loadAgents": {
+      "action": "load agents"
+    },
+    "bulkActions": {
+      "aria": "Bulk actions"
+    },
+    "selected": "{{n}} selected",
+    "hiddenByFilters": "{{n}} hidden by filters",
+    "chooseHarness": "Choose a harness to edit",
+    "editConnectionModel": "Edit connection & model",
+    "editN": "Edit {{n}} {{label}}",
+    "clearSelection": {
+      "aria": "Clear selection"
+    },
+    "loadingCurrentSettings": "Loading current agent settings…",
+    "selectionChanged": "The selected agents changed. Refresh the roster and select them again.",
+    "table": {
+      "aria": "Agent roster"
+    },
+    "selectAll": {
+      "aria": "Select all visible editable agents"
+    },
+    "count": {
+      "one": "{{n}} agent",
+      "other": "{{n}} agents"
+    },
+    "selectAgent": {
+      "aria": "Select {{name}}"
+    },
+    "loadingEditor": "Loading editor…",
+    "updated": {
+      "one": "Updated {{n}} {{label}} agent",
+      "other": "Updated {{n}} {{label}} agents"
+    },
+    "filters": {
+      "toolbar": {
+        "aria": "Agent filters"
+      },
+      "button": {
+        "aria": "Filter agents"
+      },
+      "activeTitle": "Filters: {{n}}",
+      "panel": {
+        "aria": "Agent filter choices"
+      },
+      "title": "Filters",
+      "clear": "Clear filters",
+      "all": {
+        "model": "All models",
+        "status": "All statuses",
+        "harness": "All harnesses",
+        "connection": "All connections"
+      },
+      "previouslySelected": "Previously selected {{label}}",
+      "connectionError": "Connection names couldn’t be loaded."
+    },
+    "toolbar": {
+      "aria": "Agents controls",
+      "searchLabel": "Search agents",
+      "searchPlaceholder": "Search agents…",
+      "view": {
+        "aria": "Agent view"
+      }
+    },
+    "bulk": {
+      "title": {
+        "one": "Update {{n}} {{label}} agent",
+        "other": "Update {{n}} {{label}} agents"
+      },
+      "otherUnchanged": {
+        "one": "{{n}} other selected agent won’t change.",
+        "other": "{{n}} other selected agents won’t change."
+      },
+      "description": "Change their connection, default model, or both.",
+      "agentsToUpdate": {
+        "aria": "Agents to update"
+      },
+      "partialFailure": "{{updated}} updated · {{failed}} couldn’t be saved",
+      "partialFailureHint": "Retry updates only the remaining agents. Close and reopen to review changed settings.",
+      "changeConnection": "Change connection",
+      "differentConnections": "{{n}} different connections",
+      "keepCurrent": " · Keep current",
+      "changeModel": "Change default model",
+      "differentModels": "{{n}} different models",
+      "manualModelHint": "Choose a suggested model or enter a model ID supported by your harness.",
+      "newConnection": "new connection",
+      "currentConnection": "current connection",
+      "availableOnConnections": "Available on every selected agent’s {{scope}}.",
+      "checking": "Checking connections and models…",
+      "retryLoading": "Retry loading options",
+      "changesToApply": {
+        "aria": "Changes to apply",
+        "heading": "CHANGES TO APPLY"
+      },
+      "to": {
+        "aria": "to"
+      },
+      "harnessDefault": "Harness default",
+      "alreadySet": "{{n}} already have these settings.",
+      "allAlreadySet": "All selected agents already have these settings.",
+      "appliesNote": "Applies to future runs. Running work keeps its current settings. Task-specific model overrides stay in place. A model change may start a fresh session; existing sessions may retain their connection until reset.",
+      "updating": "Updating…",
+      "retryAgents": {
+        "one": "Retry {{n}} agent",
+        "other": "Retry {{n}} agents"
+      },
+      "updateAgents": {
+        "one": "Update {{n}} agent",
+        "other": "Update {{n}} agents"
+      },
+      "loadError": "Couldn’t load connections or models",
+      "saveError": "Couldn’t save this agent. Try again.",
+      "incompatibleModel": "Choose a model compatible with this connection.",
+      "modelNotAvailable": "{{model}} isn’t available on this connection. Choose a different connection or change the default model.",
+      "routerError": "Configure connection pools on each agent’s configuration page."
+    }
+  },
+  "hire": {
+    "error": {
+      "noCompany": "Select an organization to create an agent.",
+      "loadCreated": "Could not load the created agent. Return to Agents to view it.",
+      "retryPrep": "Could not retry computer preparation.",
+      "loadModels": "Could not load models. Retry or enter a model ID manually.",
+      "saveSetup": "Could not save agent setup.",
+      "envSave": "Could not save the environment.",
+      "credentialCleanup": "Could not remove an unused setup credential. Remove it from Secrets before retrying.",
+      "createFailed": "Could not create the agent.",
+      "enterCursorModelId": "Enter the exact Cursor Cloud model ID.",
+      "enterKimiModelId": "Enter the exact Kimi model ID.",
+      "enterKimiApiKey": "Enter KIMI_API_KEY or select an organization secret.",
+      "enterAntigravityModelId": "Choose or enter an exact Google Antigravity model ID.",
+      "refreshCopilotModels": "Refresh Copilot models and select an available model before creating this agent.",
+      "acknowledgeBilling": "Acknowledge external provider billing before creating your Dot agent.",
+      "enterModelFormat": "Choose or enter a model in provider/model format.",
+      "enterRepoUrl": "Enter a GitHub repository URL.",
+      "enterCursorKey": "Enter a Cursor API key.",
+      "enterEnvKey": "Enter {{envKey}} or select an organization secret.",
+      "enterGatewayUrl": "Enter the Hermes API base URL.",
+      "enterKimiModel": "Enter the Kimi API model name.",
+      "noAdapters": "No agent adapters are available on this instance."
+    },
+    "loadingCreated": "Loading your agent…",
+    "loadingAgentSetup": "Loading your agent setup…",
+    "creating": "Creating your agent…",
+    "steps": {
+      "connect": "Connect",
+      "runtime": "Configure",
+      "saved": "Confirmation",
+      "aria": "Agent setup steps"
+    },
+    "connectModelTitle": "Connect a model",
+    "localMachine": "Local machine",
+    "nativeRunner": "Native app server runner",
+    "preparingComputer": "Preparing your agent computer…",
+    "retryPreparation": "Retry preparation",
+    "loadSetupData": {
+      "action": "load agent setup data"
+    },
+    "antigravityPending": "Google Antigravity is not available yet. You can connect your Google account and review settings. This agent cannot finish setup or run tasks yet. Model and connection settings are not saved to this agent yet.",
+    "antigravityCandidate": "Google Antigravity candidate is enabled for testing on this instance.",
+    "changeAdapter": "Change adapter",
+    "adapterUnavailable": "This adapter is unavailable. Choose an enabled adapter.",
+    "noManagedEnvironment": "No managed environment is available. Configure an environment before continuing.",
+    "loadingConnectionSettings": "Loading connection settings…",
+    "saved": {
+      "pendingApproval": "Agent submitted for approval",
+      "dotCreated": "Your Dot agent has been created",
+      "finishing": "Finishing agent setup",
+      "ready": "Your agent is ready",
+      "paused": "Your agent is paused",
+      "pendingApprovalDesc": "An organization administrator must approve this agent before it can work.",
+      "dotDesc": "Pair your Dot and test event delivery in configuration before assigning work.",
+      "finishingDesc": "Paperclip is preparing and verifying your agent. You can assign a task when it is ready.",
+      "readyDesc": "Assign a task when you’re ready for this agent to work.",
+      "pausedDesc": "Review the agent’s status in configuration before assigning work."
+    },
+    "backAgentsList": "Back to Agents",
+    "back": {
+      "agents": "Back to agents"
+    },
+    "editConfiguration": "Edit configuration",
+    "pairDot": "Pair Dot",
+    "assignTask": "Assign {{name}} a Task",
+    "configureTitle": "Configure your agent",
+    "dotPairingNote": "Create this agent, then copy its pairing prompt to your Dot.",
+    "dotMcpNote": "Enable Assistant connections (MCP) in Experimental settings before pairing.",
+    "dotAllowUnmetered": "Allow externally billed provider",
+    "dotUnmeteredHint": "Dot does not report token usage or cost. Paperclip cannot enforce a provider spend ceiling; known company and agent budget limits still apply.",
+    "thinkingEffort": "Thinking effort",
+    "effortAuto": "Auto",
+    "apiKeyProvider": "API key provider",
+    "usingSavedKey": "Using saved key",
+    "required": "Required",
+    "optionalIfConfigured": "Optional if already configured",
+    "getApiKey": "get api key",
+    "orgSecretLabel": "Or use an organization secret",
+    "keysSavedNote": "New keys are saved as organization secrets when you finish setup.",
+    "kimiKeyNote": " Use a Kimi Code API key for this runner.",
+    "multiProviderNote": " Use a {{key}}/model ID.",
+    "hermesBaseUrlLabel": "Hermes API base URL",
+    "kimiModelName": "Kimi API model name",
+    "kimiProtocol": "Kimi API protocol",
+    "kimiBaseUrl": "Kimi API base URL",
+    "kimiBaseUrlHint": "Optional override for your provider endpoint.",
+    "providerDefault": "Provider default",
+    "cursorExperimentalNote": "Experimental. Cursor hosts this agent’s execution environment. A Paperclip computer is not required. Cursor manages cloud command permissions; the effective model is not acknowledged.",
+    "githubRepo": "GitHub repository",
+    "branch": "Branch",
+    "repoDefault": "Repository default",
+    "defaultEnvironmentOption": "Default: {{label}}",
+    "retryEnvSave": "Retry saving environment",
+    "connectModel": "Connect model",
+    "saving": "Saving…",
+    "finishSetup": "Finish setup",
+    "loginHint": {
+      "cursor": "Use a Cursor API key, or run agent login on the selected environment's host.",
+      "gemini_local": "Use a Gemini API key, or an existing supported Gemini CLI login on the selected environment's host.",
+      "kimi_local": "Use a Kimi API key and model settings below, or run kimi login on the selected environment's host.",
+      "grok_local": "Grok Build uses its CLI sign-in. Run grok login on the selected environment's host, then test the connection here.",
+      "hermes_local": "Use a provider API key, or the existing Hermes provider configuration on the selected environment's host."
+    },
+    "basics": {
+      "progressAria": "New agent progress",
+      "titleName": "Meet your next agent",
+      "titleAdapter": "Choose an adapter",
+      "descName": "Start with a name. Make them your own.",
+      "descAdapter": "How should {{name}} work?",
+      "nameLabel": "Agent name",
+      "namePlaceholder": "e.g. Darnold",
+      "loadingAdapters": "Loading adapters…",
+      "loadAdapters": {
+        "action": "load the adapter list"
+      },
+      "candidate": "Candidate",
+      "notAvailable": "Not available yet",
+      "advanced": "Advanced",
+      "experimentalHarness": "Experimental harness",
+      "chooseNativeHarness": "Choose a native harness…",
+      "grokBuild": "Grok Build (Paperclip Runner)",
+      "opencodeBuild": "OpenCode (Paperclip Runner)",
+      "saving": "Saving…",
+      "chooseAdapter": "Choose adapter",
+      "configureAgent": "Configure agent"
+    },
+    "step": {
+      "name": "1. Name",
+      "adapter": "2. Adapter"
+    },
+    "inviteExternal": "Invite an external agent",
+    "builtin": {
+      "title": "Set up the {{name}}",
+      "configureTitle": "Configure & enable {{name}}",
+      "provisionTitle": "Provision {{name}}",
+      "configuring": "Configuring…",
+      "notNow": "Not now",
+      "creates": "Creates",
+      "rosterSuffix": "in your roster, badged",
+      "badge": "Built-in",
+      "infoTail": "Organizations that require hire approval will queue this for the board.",
+      "warningBanner": "This adapter needs command or endpoint fields before it can run. Provision the built-in row now, then finish those fields from the full agent configuration.",
+      "modelError": "Model “{{model}}” is not available for {{adapter}}. Choose a known model.",
+      "budgetLabel": "Monthly budget (optional)",
+      "budgetHint": "Leave blank for no cap.",
+      "perMonth": "/ month",
+      "configureFailed": "Failed to configure the built-in agent."
+    },
+    "disabledLoading": "Loading available agents…",
+    "disabledLoadError": "Unable to load experimental settings. Try again after refreshing.",
+    "disabledLoadErrorShort": "Unable to load experimental settings.",
+    "dotDisabled": "Enable OpenAI Dot and Assistant connections (MCP) in experimental settings.",
+    "grokDisabled": "Enable Grok Bot, Assistant connections (MCP), and Paperclip Runner in experimental settings.",
+    "museDisabled": "Enable Muse and Paperclip Runner in experimental settings to connect your personal Muse.",
+    "fallbackCompanyName": "your organization",
+    "dotTerminated": "This agent was terminated. Invite another agent to connect Dot.",
+    "dotResumeRequired": "Resume this agent before connecting Dot.",
+    "museMissingPublicOrigin": "This instance has no public HTTPS URL for Muse. Ask your instance administrator to configure a stable public HTTPS address, then refresh setup. Muse cannot connect through a local-only address.",
+    "museOperatorRequired": "Use an authenticated Paperclip instance with a public HTTPS URL and a company operator account. Local trusted access alone cannot connect Muse.",
+    "museIdentityError": "Unable to confirm your account. Refresh to resume Muse setup.",
+    "preset": {
+      "dot": {
+        "name": "Dot",
+        "description": "Your Dot in ChatGPT"
+      },
+      "grok_bot": {
+        "name": "Grok Bot",
+        "description": "An existing Bot in Grok"
+      },
+      "muse": {
+        "name": "Muse — Personal agent",
+        "description": "Your personal Muse at muse.ai"
+      },
+      "hermes": {
+        "name": "Hermes",
+        "description": "An existing Hermes agent"
+      },
+      "other": {
+        "name": "Other",
+        "description": "Any agent that can connect to Paperclip"
+      }
+    },
+    "dotChecks": {
+      "aria": "Dot connection checks",
+      "connected": {
+        "title": "Connected to Paperclip",
+        "description": "Your Dot has connected to this agent."
+      },
+      "updates": {
+        "title": "Task updates enabled",
+        "description": "Your Dot is subscribed to new assignments and messages."
+      },
+      "test": {
+        "title": "Test event confirmed",
+        "description": "Your Dot received our test and replied to Paperclip."
+      }
+    },
+    "dotMsg": {
+      "agentUnavailable": "Connection checks passed, but this agent cannot receive tasks. Resolve the agent’s setup blocker in Paperclip.",
+      "updatesPaused": "Connection updates paused. Reconnect to check the latest status.",
+      "promptReplaced": "This setup prompt was replaced in another window. Create a fresh prompt to continue.",
+      "eventTimeout": "Your Dot connected, but hasn’t confirmed the test event. Ask it to check Paperclip, then retry.",
+      "finishing": "Your Dot confirmed the test event. Paperclip is finishing agent setup.",
+      "ready": "Your Dot is ready for tasks. Messages can travel both ways.",
+      "waiting": "Watching for your Dot. Updates will appear here automatically.",
+      "connected": "Your Dot connected. Waiting for it to enable task updates.",
+      "confirmWaiting": "Waiting for your Dot to confirm a test event. No task will be created."
+    },
+    "srComplete": ": complete",
+    "srAttention": ": needs attention",
+    "srProgress": ": in progress",
+    "srWaiting": ": waiting",
+    "museChecks": {
+      "aria": "Muse connection checks",
+      "paired": {
+        "title": "Paired with Paperclip",
+        "description": "Paperclip authorized the scoped Muse agent connection."
+      },
+      "receiver": {
+        "title": "Receiver detected",
+        "description": "Paperclip observed a public receiver check. Only an authenticated reply confirms Muse can work."
+      },
+      "reply": {
+        "title": "Background reply verified",
+        "description": "Muse replied to an independent background test."
+      }
+    },
+    "museMsg": {
+      "offline": "Connection updates paused. Refresh to check the latest evidence.",
+      "disconnected": "Disconnected. These are the last observed connection checks. Detector cleanup and worker stop evidence remain separate.",
+      "expired": "This Muse connection expired. Reconnect Muse with a fresh setup prompt. Previous checks do not restore access.",
+      "disabled": "Muse is disabled. These are the last observed connection checks; new work cannot start.",
+      "promptReplaced": "This setup prompt was replaced or expired. Create a fresh prompt to continue.",
+      "agentUnavailable": "Connection checks passed. Resolve this agent’s setup or approval blocker before assigning tasks.",
+      "noResponse": "No recent response. Open Muse to check the current conversation and hostname permission, then test again. Silence does not identify a permission problem.",
+      "testing": "Waiting for Muse to reply to the current background test.",
+      "ready": "Muse is ready for tasks. All connection checks and agent setup passed.",
+      "checksPassed": "All connection checks passed. Paperclip is finishing agent setup.",
+      "watchPairing": "Watching for Muse to pair. Copy the setup prompt into your current Muse conversation.",
+      "waitingReceiver": "Muse is paired. Waiting for the first persisted receiver contact.",
+      "waitingReply": "Receiver detected. Waiting for Muse to reply to the background test."
+    },
+    "testBackgroundReply": "Test background reply",
+    "refreshConnection": "Refresh connection",
+    "openMuse": "Open Muse",
+    "museToolsNote": "Muse uses its own approved tools. Provider usage and cost are unavailable to Paperclip.",
+    "museLagNote": "Receiver contact is persisted in batches and may lag. Setup never creates a task. Provider usage and cost are unavailable.",
+    "roleLabel": "Role",
+    "progress": {
+      "agentUnavailable": "Agent unavailable",
+      "updatesPaused": "Updates paused",
+      "needsAttention": "Needs attention",
+      "finishing": "Finishing setup…",
+      "connecting": "Connecting…",
+      "confirming": "Confirming connection…"
+    },
+    "title": {
+      "invite": "Invite an external agent",
+      "museConnected": "Muse is connected",
+      "inviteMuse": "Invite your Muse",
+      "connectMuse": "Connect your Muse",
+      "dotConnected": "Your Dot is connected",
+      "connectDot": "Connect your Dot",
+      "inviteHermes": "Invite your Hermes agent",
+      "inviteAgent": "Invite your agent"
+    },
+    "desc": {
+      "invite": "Bring an agent you already use into {{company}}.",
+      "museDetails": "Give your personal Muse a name and role in {{company}}.",
+      "museAwaiting": "Muse requires an authenticated Paperclip instance with a public HTTPS URL and a company operator account.",
+      "museReady": "Muse can receive assignments and work with {{company}}.",
+      "museChecking": "We’re checking whether this instance can prepare Muse setup.",
+      "musePrompt": "Paste the setup prompt into your current Muse conversation. Complete Connect Paperclip if Muse asks, then approve this Paperclip hostname. Muse keeps the connection credential in its secure vault. The hostname permission applies to future requests.",
+      "dotReady": "Your Dot can now receive assignments and work with {{company}}.",
+      "dotAgentUnavailable": "Your Dot is connected. This agent must be available in Paperclip before it can receive assignments.",
+      "dotFinishing": "Your Dot has connected and confirmed task updates. Paperclip is preparing it for assignments.",
+      "dotConnecting": "Your Dot has connected. We’re checking that task updates can travel both ways.",
+      "dot": "Copy the setup prompt and send it to your Dot in ChatGPT. Your Dot will connect itself; we’ll watch for it here.",
+      "inviteGeneric": "Copy the invitation prompt and send it to your {{kind}}agent. Approve its join request in Paperclip when it’s ready.",
+      "approvalPending": "An organization admin needs to approve this agent before {{kind}} can connect. This page will update after approval.",
+      "inviteInfo": "The invitation includes everything your agent needs to join {{company}}. You can review its request before granting access.",
+      "sendMuse": "Send this whole prompt to your current Muse conversation.",
+      "sendDotChatgpt": "Send this whole prompt to your Dot in ChatGPT.",
+      "sendAgent": "Send this whole prompt to your agent."
+    },
+    "hermesKind": "Hermes ",
+    "kindMuse": "Muse",
+    "kindDot": "Dot",
+    "loadingMuseInvite": "Loading Muse invitation…",
+    "loadingMuseSetup": "Loading Muse setup…",
+    "preparingInvite": "Preparing your invitation…",
+    "dotProviderNote": "Dot uses your OpenAI account. Provider usage and cost aren’t reported to Paperclip.",
+    "retryTestEvent": "Retry test event",
+    "reconnectUpdates": "Reconnect updates",
+    "reviewApproval": "Review approval",
+    "preparing": "Preparing…",
+    "loadingSetup": "Loading setup…",
+    "refreshSetup": "Refresh setup",
+    "reconnectMuse": "Reconnect Muse",
+    "newPrompt": "Create a new prompt",
+    "copySetupPrompt": "Copy setup prompt",
+    "copyInvitePrompt": "Copy invitation prompt",
+    "waitingForDot": "Waiting for Dot…"
+  },
+  "settings": {
+    "fallbackOrganization": "Organization",
+    "breadcrumb": {
+      "companyFallback": "Company"
+    },
+    "archived": {
+      "title": "{{name}} is archived",
+      "switched": "Switched to {{name}}.",
+      "unarchiveHint": "You can unarchive it from this list."
+    },
+    "noCompany": "No organization selected. Select an organization from the switcher above.",
+    "section": {
+      "general": "General",
+      "hiring": "Hiring",
+      "decisions": "Decisions"
+    },
+    "orgName": {
+      "label": "Organization name",
+      "hint": "The display name for your organization.",
+      "renameNote": "Renaming can change this company's task ID prefix. Existing task IDs are renumbered and old task links stop resolving."
+    },
+    "description": {
+      "label": "Description",
+      "hint": "Optional description shown in the organization profile.",
+      "placeholder": "Optional organization description"
+    },
+    "logo": {
+      "label": "Logo",
+      "hint": "Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
+    },
+    "removing": "Removing...",
+    "removeLogo": "Remove logo",
+    "uploadingLogo": "Uploading logo...",
+    "saving": "Saving...",
+    "saveChanges": "Save changes",
+    "saved": "Saved",
+    "hiring": {
+      "requireApproval": {
+        "label": "Require board approval for new hires",
+        "hint": "New agent hires stay pending until approved by board."
+      }
+    },
+    "decisions": {
+      "saveNote": "Each owner saves as soon as you choose it.",
+      "defaultOwner": {
+        "label": "Default decision owner",
+        "hint": "When a card needs a person but has no explicit owner, it goes to this user's For you list. Leave as Unassigned to keep ownerless cards in the claimable pool.",
+        "unset": "Unassigned (no default owner)",
+        "error": "Couldn't save the default decision owner."
+      },
+      "budgetOwner": {
+        "label": "Budget owner",
+        "hint": "A budget hard stop also goes to this user's For you list, with Raise limit and Keep paused. The Company view still shows it to every operator.",
+        "unset": "No budget owner (Company view only)",
+        "error": "Couldn't save the budget owner."
+      },
+      "saving": "Saving…"
+    },
+    "dangerZone": {
+      "title": "Danger Zone",
+      "paragraph": "Archive this organization to hide it from the sidebar. This persists in the database."
+    },
+    "archiveConfirm": "Archive organization \"{{name}}\"? It will be hidden from the sidebar.",
+    "archiving": "Archiving...",
+    "alreadyArchived": "Already archived",
+    "archiveOrg": "Archive organization",
+    "profile": {
+      "title": "Profile",
+      "boardFallback": "Board",
+      "selectOrgForAvatar": "Select an organization before uploading a profile avatar.",
+      "loading": "Loading profile...",
+      "loadAction": "load your profile",
+      "failedToLoad": "Failed to load profile.",
+      "uploadHintOrg": "Stored in Paperclip file storage for {{name}}.",
+      "uploadHintNoOrg": "Select an organization to upload an avatar into Paperclip storage.",
+      "description": "Control how your account appears in the sidebar and other board surfaces.",
+      "changePhoto": "Change photo",
+      "uploadPhoto": "Upload photo",
+      "remove": "Remove",
+      "noEmail": "No email",
+      "clickAvatar": "Click the avatar to upload a new image.",
+      "displayName": {
+        "label": "Display name",
+        "hint": "Shown in the sidebar account footer and comment author surfaces."
+      },
+      "email": {
+        "label": "Email",
+        "hint": "Email is managed by your auth session and is read-only here."
+      },
+      "save": "Save profile"
+    },
+    "sidebar": {
+      "backToApp": "Back to app"
+    },
+    "nav": {
+      "members": "Members",
+      "secrets": "Secrets",
+      "environments": "Environments",
+      "connections": "Connections",
+      "access": "Access",
+      "export": "Export",
+      "import": "Import",
+      "experimental": "Experimental",
+      "plugins": "Plugins",
+      "adapters": "Adapters"
+    },
+    "general": {
+      "loading": "Loading general settings...",
+      "loadAction": "load general settings",
+      "descriptionTopics": "Configure instance-wide preferences including {{topics}}.",
+      "descriptionPlain": "Configure instance-wide preferences.",
+      "topicJoin3": "{{a}}, {{b}}, and {{c}}",
+      "topicJoin2": "{{a}} and {{b}}"
+    },
+    "topics": {
+      "logDisplay": "log display",
+      "backupRetention": "backup retention",
+      "dataSharing": "data sharing"
+    },
+    "deployment": {
+      "title": "Deployment and auth",
+      "localTrusted": "Local trusted mode is optimized for a local operator. Browser requests run as local board context and no sign-in is required.",
+      "public": "Authenticated public mode requires sign-in for board access and is intended for public URLs.",
+      "private": "Authenticated private mode requires sign-in and is intended for LAN, VPN, or other private-network deployments.",
+      "authReadiness": "Auth readiness",
+      "bootstrapStatus": "Bootstrap status",
+      "bootstrapInvite": "Bootstrap invite",
+      "setupRequired": "Setup required"
+    },
+    "status": {
+      "ready": "Ready",
+      "notReady": "Not ready",
+      "active": "Active",
+      "none": "None"
+    },
+    "censor": {
+      "title": "Censor username in logs",
+      "description": "Hide the username segment in home-directory paths and similar operator-visible log output. Standalone username mentions outside of paths are not yet masked in the live transcript view. This is off by default.",
+      "toggleAria": "Toggle username log censoring"
+    },
+    "backup": {
+      "title": "Backup retention",
+      "description": "Configure how long automatic database backups are retained. Backups run roughly every hour and are compressed with gzip. Within the daily window all backups are kept; beyond that, one backup per week and one per month are preserved.",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "nDays": "{{n}} days",
+      "oneWeek": "1 week",
+      "nWeeks": "{{n}} weeks",
+      "oneMonth": "1 month",
+      "nMonths": "{{n}} months"
+    },
+    "feedback": {
+      "title": "AI feedback sharing",
+      "description": "Control whether thumbs up and thumbs down votes can send the voted AI output to Paperclip Labs. Votes are always saved locally.",
+      "terms": "Read our terms of service",
+      "promptNote": "No default is saved yet. The next thumbs up or thumbs down choice will ask once and then save the answer here.",
+      "allow": "Always allow",
+      "allowDesc": "Share voted AI outputs automatically.",
+      "deny": "Don't allow",
+      "denyDesc": "Keep voted AI outputs local only.",
+      "retest": {
+        "a": "To retest the first-use prompt in local dev, remove the",
+        "b": "key from the",
+        "c": "JSON row for this instance, or set it back to",
+        "d": ". Unset and",
+        "e": "both mean no default has been chosen yet."
+      }
+    },
+    "signOut": {
+      "title": "Sign out",
+      "description": "Sign out of this Paperclip instance. You will be redirected to the login page.",
+      "signingOut": "Signing out...",
+      "button": "Sign out"
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { describeError } from "@/api/errors";
+import { useTranslation } from "@/i18n";
 import { useMemo, useState } from "react";
 import { agentHarnessType } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,7 @@ export function ConfigureBuiltInAgentModal({
 }: ConfigureBuiltInAgentModalProps) {
   const queryClient = useQueryClient();
   const { definition } = state;
+  const { t } = useTranslation();
 
   const [adapterType, setAdapterType] = useState<string>(
     () => state.agent && ["codex_local", "claude_local", "opencode_local", "pi_local"].includes(agentHarnessType(state.agent.adapterType, state.agent.adapterConfig)) ? agentHarnessType(state.agent.adapterType, state.agent.adapterConfig) : state.agent?.adapterType ?? defaultAdapterType(state),
@@ -114,7 +116,7 @@ export function ConfigureBuiltInAgentModal({
     models.some((candidate) => candidate.id === normalizedModel);
   const modelError = modelKnown
     ? null
-    : `Model “${normalizedModel}” is not available for ${adapterType}. Choose a known model.`;
+    : t("hire.builtin.modelError", { model: normalizedModel, adapter: adapterType, defaultValue: "Model “{{model}}” is not available for {{adapter}}. Choose a known model." });
   const budgetMonthlyCents = parseBudgetMonthlyCents(budgetDollars);
   const budgetValid = !budgetDollars.trim() || budgetMonthlyCents !== undefined;
   const canSubmit =
@@ -122,8 +124,8 @@ export function ConfigureBuiltInAgentModal({
     modelKnown &&
     (setupSupportedInModal ? !modelRequired || normalizedModel.length > 0 : true);
   const submitLabel = setupSupportedInModal
-    ? `Configure & enable ${definition.displayName}`
-    : `Provision ${definition.displayName}`;
+    ? t("hire.builtin.configureTitle", { name: definition.displayName, defaultValue: "Configure & enable {{name}}" })
+    : t("hire.builtin.provisionTitle", { name: definition.displayName, defaultValue: "Provision {{name}}" });
 
   const provision = useMutation({
     mutationFn: async () => {
@@ -152,7 +154,7 @@ export function ConfigureBuiltInAgentModal({
       onOpenChange(false);
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Failed to configure the built-in agent.");
+      setError(err instanceof ApiError ? err.message : t("hire.builtin.configureFailed", { defaultValue: "Failed to configure the built-in agent." }));
     },
   });
 
@@ -160,18 +162,17 @@ export function ConfigureBuiltInAgentModal({
     <Dialog open={open} onOpenChange={(next) => (provision.isPending ? undefined : onOpenChange(next))}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Set up the {definition.displayName}</DialogTitle>
+          <DialogTitle>{t("hire.builtin.title", { name: definition.displayName, defaultValue: "Set up the {{name}}" })}</DialogTitle>
           <DialogDescription>{definition.shortPurpose}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <InlineBanner tone="info" compact>
-            Creates <strong>{definition.displayName}</strong> in your roster, badged{" "}
-            <strong>Built-in</strong>. Organizations that require hire approval will queue this for the
-            board.
+            {t("hire.builtin.creates", { defaultValue: "Creates" })} <strong>{definition.displayName}</strong> {t("hire.builtin.rosterSuffix", { defaultValue: "in your roster, badged" })}{" "}
+            <strong>{t("hire.builtin.badge", { defaultValue: "Built-in" })}</strong>. {t("hire.builtin.infoTail", { defaultValue: "Organizations that require hire approval will queue this for the board." })}
           </InlineBanner>
 
-          <Field label="Harness">
+          <Field label={t("common.harness", { defaultValue: "Harness" })}>
             <AdapterTypeDropdown
               value={adapterType}
               onChange={(next) => {
@@ -206,12 +207,11 @@ export function ConfigureBuiltInAgentModal({
 
           {!setupSupportedInModal && (
             <InlineBanner tone="warning" compact>
-              This adapter needs command or endpoint fields before it can run. Provision the
-              built-in row now, then finish those fields from the full agent configuration.
+              {t("hire.builtin.warningBanner", { defaultValue: "This adapter needs command or endpoint fields before it can run. Provision the built-in row now, then finish those fields from the full agent configuration." })}
             </InlineBanner>
           )}
 
-          <Field label="Monthly budget (optional)" hint="Leave blank for no cap.">
+          <Field label={t("hire.builtin.budgetLabel", { defaultValue: "Monthly budget (optional)" })} hint={t("hire.builtin.budgetHint", { defaultValue: "Leave blank for no cap." })}>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">$</span>
               <Input
@@ -224,7 +224,7 @@ export function ConfigureBuiltInAgentModal({
                 onChange={(event) => setBudgetDollars(event.target.value)}
                 className="w-32"
               />
-              <span className="text-sm text-muted-foreground">/ month</span>
+              <span className="text-sm text-muted-foreground">{t("hire.builtin.perMonth", { defaultValue: "/ month" })}</span>
             </div>
           </Field>
 
@@ -241,7 +241,7 @@ export function ConfigureBuiltInAgentModal({
             onClick={() => onOpenChange(false)}
             disabled={provision.isPending}
           >
-            Not now
+            {t("hire.builtin.notNow", { defaultValue: "Not now" })}
           </Button>
           <Button
             onClick={() => {
@@ -250,7 +250,7 @@ export function ConfigureBuiltInAgentModal({
             }}
             disabled={!canSubmit || provision.isPending}
           >
-            {provision.isPending ? "Configuring…" : submitLabel}
+            {provision.isPending ? t("hire.builtin.configuring", { defaultValue: "Configuring…" }) : submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

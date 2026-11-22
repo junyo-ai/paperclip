@@ -93,7 +93,8 @@ function matchesFilter(status: string, tab: FilterTab): boolean {
 
 function matchesSearch(agent: Pick<Agent, "name" | "role" | "title">, query: string): boolean {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const text = [agent.name, agent.role, roleLabels[agent.role], agent.title].filter(Boolean).join(" ").toLocaleLowerCase();
+  // Include the translated role so the displayed (localized) term also matches.
+  const text = [agent.name, agent.role, roleLabels[agent.role], agentRoleLabel(agent.role), agent.title].filter(Boolean).join(" ").toLocaleLowerCase();
   return words.every(word => text.includes(word));
 }
 
@@ -343,7 +344,7 @@ export function Agents({ initialView = "list" }: { initialView?: AgentsView } = 
 
   const eligibleAgents = useMemo(() => (agents ?? []).filter(agent => !HIDDEN_AGENT_STATUSES.has(agent.status)), [agents]);
   const filtered = useMemo(() => filterAgents(eligibleAgents, tab, builtInAgentIds, query)
-    .filter(rosterFilters.matches), [eligibleAgents, tab, builtInAgentIds, query, rosterFilters.matches]);
+    .filter(rosterFilters.matches), [eligibleAgents, tab, builtInAgentIds, query, rosterFilters.matches, t]);
   // Keep hierarchy placement stable while search/filter only changes card emphasis.
   const visibleOrg = useMemo(() => filterOrgTree(orgTree ?? [], "all", builtInAgentIds), [orgTree, builtInAgentIds]);
   const matchingAgentIds = useMemo(() => new Set(filtered.map(agent => agent.id)), [filtered]);

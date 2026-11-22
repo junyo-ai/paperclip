@@ -50,6 +50,7 @@ import { githubChatReviewService } from "./chat-github-reviews.js";
 import { runIdentityContexts } from "@paperclipai/db";
 import { executeSpekoVoiceTool, spekoToolsForSession } from "./voice/speko-agent-tools.js";
 import { executeRoleTemplateTool, ROLE_TEMPLATE_CHAT_TOOLS } from "./role-template-chat-tools.js";
+import { executeLessonCaptureTool, LESSON_CAPTURE_CHAT_TOOLS } from "./lesson-capture-chat-tools.js";
 import { captureRunIdentity } from "./run-identity.js";
 import { emitConnectionInvoked } from "./connector-telemetry.js";
 import { resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
@@ -386,7 +387,8 @@ export type ToolGatewayProviderType =
   | "paperclip_github_chat"
   | "paperclip_slack_chat"
   | "paperclip_speko_voice"
-  | "paperclip_role_template";
+  | "paperclip_role_template"
+  | "paperclip_lesson_capture";
 
 export interface ConnectedMcpGatewayMetadata {
   applicationId: string;
@@ -3444,6 +3446,7 @@ export function createToolGatewayService(
       // Conversational template builder ships with the gateway itself: no
       // connection, endpoint, or catalog row to discover it through.
       ...ROLE_TEMPLATE_CHAT_TOOLS,
+      ...LESSON_CAPTURE_CHAT_TOOLS,
       ...connectedTools,
     ];
   }
@@ -3466,7 +3469,8 @@ export function createToolGatewayService(
         session.agentId ||
         (tool.providerType !== "paperclip_self" &&
           tool.providerType !== "paperclip_plugin" &&
-          tool.providerType !== "paperclip_role_template"),
+          tool.providerType !== "paperclip_role_template" &&
+          tool.providerType !== "paperclip_lesson_capture"),
     );
     const decisionCache = createToolAccessDecisionCache();
     const decisions = await measureRunPhase("connectors.discovery.policy", () => decideToolsForListing(
@@ -3566,6 +3570,18 @@ export function createToolGatewayService(
         if (error instanceof HttpError) {
           const details = asRecord(error.details) ?? {};
           throw new ToolGatewayHttpError(error.status, error.message, typeof details.code === "string" ? details.code : "role_template_operation_rejected", details);
+        }
+        throw error;
+      }
+    }
+    if (tool.providerType === "paperclip_lesson_capture") {
+      try {
+        const data = await executeLessonCaptureTool(db, session, tool.upstreamToolName ?? "", parameters);
+        return { content: JSON.stringify(data), data };
+      } catch (error) {
+        if (error instanceof HttpError) {
+          const details = asRecord(error.details) ?? {};
+          throw new ToolGatewayHttpError(error.status, error.message, typeof details.code === "string" ? details.code : "lesson_capture_operation_rejected", details);
         }
         throw error;
       }

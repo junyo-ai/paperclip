@@ -13,6 +13,7 @@ import {
   Settings,
   CircleAlert,
   CircleCheck,
+  CircleEllipsis,
   CircleSlash,
   PencilLine,
   PauseCircle,
@@ -46,7 +47,7 @@ function formatVerb(
       return "opened";
     case "issue.updated": {
       const status = details?.status;
-      if (status === "in_review" && details?.externalConversationState === "waiting") return "moved to idle";
+      if (status === "in_review" && details?.externalConversationState === "waiting") return "moved to waiting";
       if (typeof status === "string") return `moved to ${humanize(status)}`;
       const priority = details?.priority;
       if (typeof priority === "string") return `set priority to ${humanize(priority)} on`;
@@ -142,7 +143,7 @@ function deriveTaskStatus(
       return "todo";
     case "issue.updated": {
       const status = details?.status;
-      if (status === "in_review" && details?.externalConversationState === "waiting") return "idle";
+      if (status === "in_review" && details?.externalConversationState === "waiting") return "waiting";
       return typeof status === "string" ? status : null;
     }
     case "issue.document_created":
@@ -246,6 +247,9 @@ function getIconSpec(
 
 function StatusCircle({ status }: { status: string }) {
   const colorClass = issueStatusIcon[status] ?? issueStatusIconDefault;
+  if (status === "waiting") {
+    return <CircleEllipsis className={cn("h-4 w-4 shrink-0", colorClass)} strokeWidth={2} />;
+  }
   const isFilled = status === "done";
   return (
     <span className={cn("relative inline-flex h-4 w-4 shrink-0 rounded-full border-2", colorClass)}>

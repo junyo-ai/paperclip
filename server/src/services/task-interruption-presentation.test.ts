@@ -142,3 +142,44 @@ describe("task project-access interruption", () => {
       .toMatchObject({ state: "resolved" });
   });
 });
+
+describe("fixed-run failure card supersession", () => {
+  const now = Date.parse("2026-01-01T00:01:00.000Z");
+  const stale = new Date(now - 30_000);
+  const succeededRun = { ...run, status: "succeeded", errorCode: null, resultJson: null };
+
+  it("clears a stale failure card once the fixed run succeeds, keeping the input receipt", () => {
+    const wait = { id: "retry", requestedAt: stale, sourceRunId: succeededRun.id,
+      executionWaitReason: "execution_active" };
+    const presentation = projectTaskInterruption(issue,
+      { run: succeededRun, agent, paused: false, approval: false, wait }, now);
+    expect(presentation).toMatchObject({ state: "resolved", canRetry: false, userAction: null, intentId: "retry" });
+    expect(presentation).not.toHaveProperty("retryWait");
+  });
+
+  it("keeps the settling window for a freshly queued input on a succeeded run", () => {
+    expect(projectTaskInterruption(issue, { run: succeededRun, agent, paused: false, approval: false,
+      wait: { id: "input", requestedAt: new Date(now - 2_000) } }, now))
+      .toMatchObject({ state: "working", canRetry: false });
+  });
+
+  it("keeps a pending approval actionable on a succeeded run with a saved input", () => {
+    const wait = { id: "retry", requestedAt: stale, sourceRunId: succeededRun.id,
+      executionWaitReason: "execution_active" };
+    expect(projectTaskInterruption(issue,
+      { run: succeededRun, agent, paused: false, approval: true, wait }, now))
+      .toMatchObject({ state: "waiting_for_user", userAction: "approval", intentId: "retry" });
+    expect(projectTaskInterruption(issue,
+      { run: succeededRun, agent, paused: false, approval: true, wait }, now))
+      .not.toHaveProperty("retryWait");
+  });
+
+  it("keeps failure presentation for a failed run carrying the same stale receipt", () => {
+    const wait = { id: "retry", requestedAt: stale, sourceRunId: run.id,
+      executionWaitReason: "execution_active" };
+    expect(projectTaskInterruption(issue, { run: { ...run, errorCode: "native_provider_terminal_failed",
+      resultJson: null }, agent, paused: false, approval: false, wait }, now))
+      .toMatchObject({ state: "failed", canRetry: true, retryWait: { reason: "execution_active",
+      message: "Retry is waiting for the current run to finish. Your message is saved." } });
+  });
+});

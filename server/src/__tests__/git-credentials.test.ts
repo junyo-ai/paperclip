@@ -12,6 +12,7 @@ import {
   createIssueGitRemoteAuthProvider,
   describeGitAuthFailure,
   isGitHubHttpsRemoteUrl,
+  resolveBoundGitHubTokenSecretRefs,
   resolveGitHubApiCredential,
   scrubGitCredentialText,
 } from "../services/git-credentials.ts";
@@ -209,7 +210,88 @@ describe("createGitRemoteAuthProvider", () => {
     expect(invocation?.source).toBe("company_secret");
     expect(invocation?.secretName).toBe("GH_TOKEN");
     expect(invocation?.env[GIT_CREDENTIAL_TOKEN_ENV_KEY]).toBe("agent-b-legacy-token");
-    expect(db.select).toHaveBeenCalledTimes(2);
+    // Two managed-identity lookups plus the agent binding lookup, which degrades
+    // to an empty list when the catalog read fails.
+    expect(db.select).toHaveBeenCalledTimes(3);
+  });
+
+  it("resolves an env.GITHUB_TOKEN agent binding before well-known secret names", async () => {
+    const secrets = buildSecretsFake({ GITHUB_PAT: "bound-pat-token" });
+    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", { agentId: "agent-a" }, {
+      secrets,
+      env: { GITHUB_TOKEN: "env-token" },
+      boundRefs: [{
+        secretId: "secret-GITHUB_PAT",
+        secretName: "GITHUB_PAT",
+        configPath: "env.GITHUB_TOKEN",
+        versionSelector: "latest",
+      }],
+    });
+    const invocation = await provider(githubUrl);
+    expect(invocation?.source).toBe("company_secret");
+    expect(invocation?.secretName).toBe("GITHUB_PAT");
+    expect(invocation?.env[GIT_CREDENTIAL_TOKEN_ENV_KEY]).toBe("bound-pat-token");
+    // The name probe never runs: the binding short-circuits the well-known names.
+    expect(secrets.getByName).not.toHaveBeenCalled();
+  });
+
+  it("falls back to well-known names when the bound secret fails to resolve", async () => {
+    const secrets = buildSecretsFake({ GITHUB_TOKEN: "name-probed-token" });
+    const provider = createGitRemoteAuthProvider(fakeDb, "company-1", { agentId: "agent-a" }, {
+      secrets,
+      env: {},
+      boundRefs: [{
+        secretId: "secret-GITHUB_PAT",
+        secretName: "GITHUB_PAT",
+        configPath: "env.GITHUB_TOKEN",
+        versionSelector: "latest",
+      }],
+    });
+    const invocation = await provider(githubUrl);
+    expect(invocation?.secretName).toBe("GITHUB_TOKEN");
+    expect(invocation?.env[GIT_CREDENTIAL_TOKEN_ENV_KEY]).toBe("name-probed-token");
+  });
+});
+
+describe("resolveBoundGitHubTokenSecretRefs", () => {
+  const selectRows = (rows: unknown[]) =>
+    ({
+      select: () => ({
+        from: () => ({
+          innerJoin: () => ({
+            where: async () => rows,
+          }),
+        }),
+      }),
+    }) as unknown as Db;
+
+  it("returns an empty list without an agent or project context", async () => {
+    const db = selectRows([{ secretId: "s1" }]);
+    await expect(resolveBoundGitHubTokenSecretRefs(db, "company-1", {})).resolves.toEqual([]);
+  });
+
+  it("orders agent bindings before project bindings and canonical paths within a target", async () => {
+    const db = selectRows([
+      { secretId: "proj-id", secretName: "PROJECT_PAT", configPath: "env.GITHUB_TOKEN", versionSelector: "latest", targetType: "project", targetId: "p1" },
+      { secretId: "agent-gh", secretName: "GH_PAT", configPath: "env.GH_TOKEN", versionSelector: "latest", targetType: "agent", targetId: "a1" },
+      { secretId: "agent-github", secretName: "GITHUB_PAT", configPath: "env.GITHUB_TOKEN", versionSelector: "2", targetType: "agent", targetId: "a1" },
+      { secretId: "other-agent", secretName: "OTHER", configPath: "env.GITHUB_TOKEN", versionSelector: "latest", targetType: "agent", targetId: "a2" },
+      { secretId: "", secretName: "BROKEN", configPath: "env.GITHUB_TOKEN", versionSelector: "latest", targetType: "agent", targetId: "a1" },
+    ]);
+    const refs = await resolveBoundGitHubTokenSecretRefs(db, "company-1", { agentId: "a1", projectId: "p1" });
+    // Agent rows first (canonical env.GITHUB_TOKEN before env.GH_TOKEN), then the project
+    // row; a row for another agent sorts last and is the production query's scope to exclude.
+    expect(refs.map((ref) => ref.secretId)).toEqual(["agent-github", "agent-gh", "proj-id", "other-agent"]);
+    expect(refs[0]).toMatchObject({ secretName: "GITHUB_PAT", configPath: "env.GITHUB_TOKEN", versionSelector: 2 });
+  });
+
+  it("degrades to an empty list when the catalog read fails", async () => {
+    const db = {
+      select: () => {
+        throw new Error("catalog unavailable");
+      },
+    } as unknown as Db;
+    await expect(resolveBoundGitHubTokenSecretRefs(db, "company-1", { agentId: "a1" })).resolves.toEqual([]);
   });
 });
 
@@ -416,12 +498,12 @@ describe("createIssueGitRemoteAuthProvider", () => {
   }
 
   it("resolves credentials with the issue's responsible user and assigned agent", async () => {
-    const { db } = issueDb([{ responsibleUserId: "user-1", assigneeAgentId: "agent-1" }]);
+    const { db } = issueDb([{ responsibleUserId: "user-1", assigneeAgentId: "agent-1", projectId: "project-1" }]);
     const inner = vi.fn(async () => ({ env: {}, configArgs: [], source: "managed_connection" }));
     const create = vi.fn(() => inner) as unknown as typeof createGitRemoteAuthProvider;
     const provider = createIssueGitRemoteAuthProvider(db, "company-1", "issue-1", create);
     await expect(provider(githubUrl)).resolves.toMatchObject({ source: "managed_connection" });
-    expect(create).toHaveBeenCalledWith(db, "company-1", { issueId: "issue-1", responsibleUserId: "user-1", agentId: "agent-1" });
+    expect(create).toHaveBeenCalledWith(db, "company-1", { issueId: "issue-1", responsibleUserId: "user-1", agentId: "agent-1", projectId: "project-1" });
     expect(inner).toHaveBeenCalledWith(githubUrl);
   });
 
@@ -440,6 +522,6 @@ describe("createIssueGitRemoteAuthProvider", () => {
     const { db } = issueDb([]);
     const create = vi.fn(() => vi.fn(async () => null)) as unknown as typeof createGitRemoteAuthProvider;
     await createIssueGitRemoteAuthProvider(db, "company-1", "issue-1", create)(githubUrl);
-    expect(create).toHaveBeenCalledWith(db, "company-1", { issueId: "issue-1", responsibleUserId: null, agentId: null });
+    expect(create).toHaveBeenCalledWith(db, "company-1", { issueId: "issue-1", responsibleUserId: null, agentId: null, projectId: null });
   });
 });

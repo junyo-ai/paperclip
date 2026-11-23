@@ -77,7 +77,7 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
   const base: TaskInterruptionPresentation = { intentId: wait?.id ?? null, responsibility: "system",
     state: "resolved", nextRetryAt: null, canRetry: false, userAction: null,
     sourceRunIds: [run.id], observedRunId: run.id };
-  if (["done", "cancelled"].includes(issue.status) || (run.status === "succeeded" && !wait)) return base;
+  if (["done", "cancelled"].includes(issue.status)) return base;
   const providerFailure = run.status === "failed" || run.status === "scheduled_retry"
     ? readProviderFailure(run.resultJson?.providerFailure) : null;
   if (providerFailure) base.providerFailure = providerFailure;
@@ -89,6 +89,10 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
       : [agent?.pauseReason, project?.pauseReason, company?.pauseReason].some(reason => reason === "budget" || reason === "budget_exceeded")
         ? "budget" : input.paused || project?.pausedAt || agent?.status === "paused" || company?.status === "paused" ? "resume" : null;
   if (userAction) return { ...base, responsibility: "user", state: "waiting_for_user", userAction };
+  if (run.status === "succeeded") {
+    const settling = !!wait && wait.requestedAt.getTime() > now - 10_000 && system?.state !== "exhausted";
+    return settling ? { ...base, state: "working" } : base;
+  }
   // Intentional Stop is not an unsuccessful attempt. This is presentation only;
   // physical containment and pending cleanup keep their execution-side gates.
   if (!wait && run.runtimeMode === "native" && run.companyId === issue.companyId && run.nativeIssueId === issue.id

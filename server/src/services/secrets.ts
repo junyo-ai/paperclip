@@ -104,7 +104,7 @@ const COMING_SOON_SECRET_PROVIDERS: ReadonlySet<SecretProvider> = new Set([
   "gcp_secret_manager",
   "vault",
 ]);
-const FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
+export const FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
   hermes_gateway: ["apiKey"],
 };
 const USER_SECRET_DEFINITION_KEY_UNIQUE_CONSTRAINT = "user_secret_definitions_company_key_uq";
@@ -5369,7 +5369,8 @@ export function secretService(db: Db | DbTransaction) {
         let definition: typeof userSecretDefinitions.$inferSelect | null = null;
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
-        } catch {
+        } catch (error) {
+          if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(
               entry,
@@ -5526,7 +5527,8 @@ export function secretService(db: Db | DbTransaction) {
         let definition: typeof userSecretDefinitions.$inferSelect | null = null;
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
-        } catch {
+        } catch (error) {
+          if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(
               entry,

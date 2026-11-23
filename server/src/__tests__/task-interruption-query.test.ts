@@ -171,7 +171,7 @@ describe.skipIf(!support.supported)("task interruption latest run query", () => 
     expect(await taskInterruptionPresentations(db, companyId, [])).toEqual(new Map());
   });
 
-  it("reports the saved-message failure state without reporting work, retries or user actions", async () => {
+  it("reports failure states for failed and cancelled runs and resolves the settled saved message", async () => {
     const companyId = randomUUID(), agentId = randomUUID(), pausedAgentId = randomUUID();
     await db.insert(companies).values({ id: companyId, name: "Failure states", issuePrefix: `F${companyId.slice(0, 7)}` });
     await db.insert(agents).values([
@@ -194,14 +194,17 @@ describe.skipIf(!support.supported)("task interruption latest run query", () => 
     }).returning();
     captureTaskInterruptionFailure.mockClear();
     const result = await taskInterruptionPresentations(db, companyId, [...input, { ...input[0]!, companyId: randomUUID() }]);
-    expect(captureTaskInterruptionFailure).toHaveBeenCalledTimes(3);
-    for (const n of [0, 1, 7]) {
+    expect(captureTaskInterruptionFailure).toHaveBeenCalledTimes(2);
+    for (const n of [0, 7]) {
       expect(result.get(input[n]!.id)).toMatchObject({ responsibility: "system", state: "failed" });
       expect(captureTaskInterruptionFailure).toHaveBeenCalledWith({
         companyId, agentId, taskId: input[n]!.id, runId: runs[n]!.id,
-        runStatus: runs[n]!.status, agentAdapter: "process", intentId: n === 1 ? wait!.id : null,
+        runStatus: runs[n]!.status, agentAdapter: "process", intentId: null,
       });
     }
+    expect(result.get(input[1]!.id)).toMatchObject({ state: "resolved", canRetry: false, userAction: null, intentId: wait!.id });
+    expect(result.get(input[1]!.id)).not.toHaveProperty("retryWait");
+    expect(captureTaskInterruptionFailure).not.toHaveBeenCalledWith(expect.objectContaining({ taskId: input[1]!.id }));
     expect(result.get(input[2]!.id)?.state).toBe("working");
     expect(result.get(input[3]!.id)?.state).toBe("retry_scheduled");
     for (const n of [4, 5]) expect(result.get(input[n]!.id)?.state).toBe("resolved");

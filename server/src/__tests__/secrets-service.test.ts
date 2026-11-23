@@ -1781,6 +1781,28 @@ describeEmbeddedPostgres("secretService", () => {
     expect(JSON.stringify(events)).not.toContain("routine-super-secret");
   });
 
+  it("reports a user_secret_ref to a missing definition as a missing binding", async () => {
+    const companyId = await seedCompany();
+    const svc = secretService(db);
+    const env = {
+      GITHUB_TOKEN: { type: "user_secret_ref" as const, key: "no_such_definition", version: "latest" as const },
+    };
+
+    await expect(
+      svc.collectMissingRuntimeBindings(companyId, env, {
+        consumerType: "agent",
+        consumerId: "agent-missing-def",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        bindingType: "user_secret_ref",
+        configPath: "env.GITHUB_TOKEN",
+        envKey: "GITHUB_TOKEN",
+        errorCode: "user_secret_definition_missing",
+      }),
+    ]);
+  });
+
   it("resolves user secret refs through responsible-user values and records owner metadata", async () => {
     const companyId = await seedCompany();
     await seedCompanyMember(companyId, "user-1", "owner");

@@ -1,4 +1,5 @@
 import {
+  companySecretBindings,
   companySecrets,
   heartbeatRuns,
   issues,
@@ -10,7 +11,8 @@ import {
   userSecretDefinitions,
   type Db,
 } from "@paperclipai/db";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { GITHUB_TOKEN_SECRET_NAMES, type SecretVersionSelector } from "@paperclipai/shared";
 import { isGitHubDotCom } from "./github-fetch.js";
 import { secretService } from "./secrets.js";
 import { toolAccessService } from "./tool-access.js";
@@ -18,16 +20,17 @@ import { toolAccessService } from "./tool-access.js";
 /**
  * Server-side git credentials for managed project checkouts and execution-workspace base
  * refreshes. Operators store a GitHub token as a company secret under one of the well-known
- * names below (the same convention the GitHub external-object provider reads); this module
- * resolves it and turns it into a git invocation that authenticates clone/fetch against
- * github.com over HTTPS without ever placing the token in argv, URLs, or on disk.
+ * names below (the same convention the GitHub external-object provider reads), or bind any
+ * company secret to an agent/project `env.<well-known-name>` path; this module resolves it
+ * and turns it into a git invocation that authenticates clone/fetch against github.com over
+ * HTTPS without ever placing the token in argv, URLs, or on disk.
  *
  * The provider factory is deliberately the single seam for future credential sources (for
  * example a brokered GitHub connection): swap the factory, keep every call site unchanged.
  */
 
 /** Company-secret names probed for a GitHub token, in priority order. */
-export const DEFAULT_GITHUB_TOKEN_SECRET_NAMES = ["GITHUB_TOKEN", "GH_TOKEN", "PAPERCLIP_GITHUB_TOKEN"] as const;
+export const DEFAULT_GITHUB_TOKEN_SECRET_NAMES = GITHUB_TOKEN_SECRET_NAMES;
 
 /** Env var the credential helper reads the token from; never appears in argv. */
 export const GIT_CREDENTIAL_TOKEN_ENV_KEY = "PAPERCLIP_GIT_TOKEN";
@@ -186,7 +189,7 @@ export function describeGitAuthFailure(input: {
       : "the server-environment GitHub credential";
     return `The operation authenticated with ${label}, which was rejected or lacks access to this repository.`;
   }
-  return "No GitHub credential is configured — add a GITHUB_TOKEN or GH_TOKEN company secret in Settings → Secrets, or configure a local checkout cwd for this project workspace.";
+  return "No GitHub credential is configured — add a GITHUB_TOKEN or GH_TOKEN company secret in Settings → Secrets, bind a secret to env.GITHUB_TOKEN on the agent or project, or configure a local checkout cwd for this project workspace.";
 }
 
 type SecretServiceLike = ReturnType<typeof secretService>;
@@ -199,6 +202,90 @@ type GitCredentialSecretsDeps = {
   resolveSecretValue: SecretServiceLike["resolveSecretValue"];
   resolveUserSecretValue?: SecretServiceLike["resolveUserSecretValue"];
 };
+
+/** A company secret explicitly bound to an agent/project `env.<well-known-name>` path. */
+export type BoundGitHubTokenSecretRef = {
+  secretId: string;
+  /** The company secret's name (may be non-canonical, e.g. GITHUB_PAT). */
+  secretName: string;
+  configPath: string;
+  versionSelector: SecretVersionSelector;
+};
+
+/**
+ * Company secrets explicitly bound to a GitHub-token env path for this run's agent (then its
+ * project), joined against the same company's active secret rows so out-of-company or
+ * disabled secrets can never authenticate. Well-known secret *names* remain the fallback
+ * contract; this is the "your GITHUB_PAT is bound to env.GITHUB_TOKEN, so use it" path that
+ * name probing alone silently misses.
+ *
+ * A lookup failure degrades to an empty list — an auditing problem in the binding catalog
+ * must not take down git authentication that name probing could still provide.
+ */
+export async function resolveBoundGitHubTokenSecretRefs(
+  db: Db,
+  companyId: string,
+  context: { agentId?: string | null; projectId?: string | null },
+): Promise<BoundGitHubTokenSecretRef[]> {
+  const targets = [
+    context.agentId ? { targetType: "agent", targetId: context.agentId, rank: 0 } : null,
+    context.projectId ? { targetType: "project", targetId: context.projectId, rank: 1 } : null,
+  ].filter((target): target is { targetType: string; targetId: string; rank: number } => target !== null);
+  if (targets.length === 0) return [];
+  try {
+    const rows = await db
+      .select({
+        secretId: companySecretBindings.secretId,
+        secretName: companySecrets.name,
+        configPath: companySecretBindings.configPath,
+        versionSelector: companySecretBindings.versionSelector,
+        targetType: companySecretBindings.targetType,
+        targetId: companySecretBindings.targetId,
+      })
+      .from(companySecretBindings)
+      .innerJoin(
+        companySecrets,
+        and(
+          eq(companySecrets.id, companySecretBindings.secretId),
+          eq(companySecrets.companyId, companyId),
+          eq(companySecrets.status, "active"),
+          isNull(companySecrets.deletedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(companySecretBindings.companyId, companyId),
+          or(...targets.map((target) =>
+            and(
+              eq(companySecretBindings.targetType, target.targetType),
+              eq(companySecretBindings.targetId, target.targetId),
+            ))),
+          inArray(
+            companySecretBindings.configPath,
+            DEFAULT_GITHUB_TOKEN_SECRET_NAMES.map((name) => `env.${name}`),
+          ),
+        ),
+      );
+    const rankFor = (targetType: string, targetId: string) =>
+      targets.find((target) => target.targetType === targetType && target.targetId === targetId)?.rank ?? Number.MAX_SAFE_INTEGER;
+    const pathOrder = new Map(DEFAULT_GITHUB_TOKEN_SECRET_NAMES.map((name, index) => [`env.${name}`, index]));
+    return rows
+      .filter((row) => typeof row.secretId === "string" && row.secretId.length > 0 && pathOrder.has(row.configPath))
+      .sort((a, b) =>
+        rankFor(a.targetType, a.targetId) - rankFor(b.targetType, b.targetId)
+        || (pathOrder.get(a.configPath) ?? 0) - (pathOrder.get(b.configPath) ?? 0)
+        || a.secretId.localeCompare(b.secretId))
+      .map(({ secretId, secretName, configPath, versionSelector }) => ({
+        secretId, secretName, configPath,
+        // Match the runtime binding projection: "latest" (or unset) stays literal;
+        // a pinned binding version is the numeric selector resolveSecretValue expects.
+        versionSelector: versionSelector === "latest" || !versionSelector
+          ? "latest" : Number(versionSelector),
+      }));
+  } catch {
+    return [];
+  }
+}
 
 export type GitHubApiCredentialSource = "company_secret" | "server_env";
 
@@ -260,10 +347,11 @@ export function createIssueGitRemoteAuthProvider(db: Db, companyId: string, issu
   create: typeof createGitRemoteAuthProvider = createGitRemoteAuthProvider): GitRemoteAuthProvider {
   let provider: Promise<GitRemoteAuthProvider> | null = null;
   return async (remoteUrl: string) => {
-    provider ??= db.select({ responsibleUserId: issues.responsibleUserId, assigneeAgentId: issues.assigneeAgentId }).from(issues)
+    provider ??= db.select({ responsibleUserId: issues.responsibleUserId, assigneeAgentId: issues.assigneeAgentId, projectId: issues.projectId }).from(issues)
       .where(and(eq(issues.id, issueId), eq(issues.companyId, companyId)))
       .then(([issue]) => create(db, companyId, {
         issueId, responsibleUserId: issue?.responsibleUserId ?? null, agentId: issue?.assigneeAgentId ?? null,
+        projectId: issue?.projectId ?? null,
       }));
     return (await provider)(remoteUrl);
   };
@@ -277,11 +365,14 @@ export function createGitRemoteAuthProvider(
     heartbeatRunId?: string | null;
     responsibleUserId?: string | null;
     agentId?: string | null;
+    projectId?: string | null;
   },
   deps?: {
     secrets?: GitCredentialSecretsDeps;
     env?: NodeJS.ProcessEnv;
     secretNames?: readonly string[];
+    /** Pre-resolved binding refs; tests use this seam to avoid a database. */
+    boundRefs?: BoundGitHubTokenSecretRef[];
   },
 ): GitRemoteAuthProvider {
   const secrets: GitCredentialSecretsDeps = deps?.secrets ?? secretService(db);
@@ -299,6 +390,27 @@ export function createGitRemoteAuthProvider(
     if (managed.configured) {
       if (!managed.credential) throw new Error(managed.error ?? "Managed GitHub connection is unavailable");
       return managed.credential;
+    }
+    // Explicit env.<name> bindings on this run's agent/project resolve before well-known
+    // names: a token stored as GITHUB_PAT but bound to env.GITHUB_TOKEN must authenticate
+    // instead of silently resolving to nothing.
+    const boundRefs = deps?.boundRefs
+      ?? (db ? await resolveBoundGitHubTokenSecretRefs(db, companyId, context ?? {}) : []);
+    for (const ref of boundRefs) {
+      const token = await secrets
+        .resolveSecretValue(companyId, ref.secretId, ref.versionSelector, {
+          accessContext: {
+            consumerType: "system",
+            consumerId: "workspace-git-credential",
+            actorType: "system",
+            issueId: context?.issueId ?? null,
+            heartbeatRunId: context?.heartbeatRunId ?? null,
+            responsibleUserId: context?.responsibleUserId ?? null,
+          },
+        })
+        .then((value) => value.trim())
+        .catch(() => "");
+      if (token) return { token, source: "company_secret", secretName: ref.secretName };
     }
     for (const secretName of secretNames) {
       const secret = await Promise.resolve(secrets.getByName(companyId, secretName)).catch(() => null);

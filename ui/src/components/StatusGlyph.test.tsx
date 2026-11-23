@@ -18,6 +18,7 @@ const STATUS_ICON_CLASS: Record<string, string> = {
   todo: "lucide-circle",
   in_progress: "lucide-task-progress-spinner",
   monitoring: "lucide-clock",
+  waiting: "lucide-circle-ellipsis",
   in_review: "lucide-circle-dot",
   done: "lucide-circle-check",
   blocked: "lucide-circle-minus",
@@ -100,6 +101,15 @@ describe("StatusGlyph", () => {
     expect(queue).toContain("var(--status-task-icon-in_queue)");
     expect(queue).not.toContain("var(--status-task-icon-blocked)");
     expect(blocked).toContain("var(--status-task-icon-blocked)");
+  });
+
+  it("gives waiting its own shape and hue, distinct from idle and in_review", () => {
+    const waiting = renderToStaticMarkup(<StatusGlyph status="waiting" />);
+    expect(waiting).toContain("lucide-circle-ellipsis");
+    expect(waiting).toContain("var(--status-task-icon-waiting)");
+    expect(waiting).not.toContain("lucide-circle-dot");
+    expect(waiting).not.toContain("var(--status-task-icon-in_review)");
+    expect(renderToStaticMarkup(<StatusGlyph status="in_review" />)).toContain("lucide-circle-dot");
   });
 
   it("is decorative by default and labelled when given a title", () => {

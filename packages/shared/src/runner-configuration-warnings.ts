@@ -1,5 +1,5 @@
 export interface AgentConfigurationWarning {
-  code: "runner_option_ignored";
+  code: "runner_option_ignored" | "credential_binding_skipped";
   field: string;
   message: string;
 }

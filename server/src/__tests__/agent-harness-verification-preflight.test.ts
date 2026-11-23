@@ -4,12 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { agents, aiProviderDefaults, companies, companyMemberships, connectionGrants, createDb } from "@paperclipai/db";
+import { agents, aiProviderDefaults, companies, companyMemberships, companySecretBindings, connectionGrants, createDb } from "@paperclipai/db";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/adapter-utils";
 import { agentHarnessVerificationService } from "../services/agent-harness-verification.js";
 import * as environmentTests from "../services/agent-environment-test.js";
 import { aiConnectionService } from "../services/ai-connections.js";
 import { readAiConnectionConfigurationFailure } from "../services/ai-connection-configuration-failure.js";
+import { secretService } from "../services/secrets.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 
@@ -107,6 +108,47 @@ describePostgres("saved harness account preflight", () => {
     expect(probe.mock.calls[0][1].config.env).toMatchObject({ OPENROUTER_API_KEY: "fixture-preflight-key" });
     expect(release).toHaveBeenCalledExactlyOnceWith("released");
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unbound agent secret reference before allocating a target", async () => {
+    await db.update(agents).set({
+      adapterConfig: {
+        model: "openrouter/anthropic/claude-sonnet-4.5",
+        env: { GITHUB_TOKEN: { type: "secret_ref", secretId: randomUUID() } },
+      },
+    }).where(eq(agents.id, agent.id));
+    const failure = await verify().catch(error => error);
+    expect(failure.code).toBe("harness_secret_binding_missing");
+    expect(failure.missingBindingPaths).toEqual(["env.GITHUB_TOKEN"]);
+    expect(allocate).not.toHaveBeenCalled();
+    expect(probe).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it("passes a bound agent secret reference through to the probe", async () => {
+    const secret = await secretService(db).create(agent.companyId, {
+      name: `preflight-pat-${randomUUID().slice(0, 8)}`,
+      provider: "local_encrypted",
+      value: "ghp-fixture-pat",
+    });
+    await db.insert(companySecretBindings).values({
+      companyId: agent.companyId,
+      secretId: secret.id,
+      targetType: "agent",
+      targetId: agent.id,
+      configPath: "env.GITHUB_TOKEN",
+    });
+    await db.update(agents).set({
+      adapterConfig: {
+        model: "openrouter/anthropic/claude-sonnet-4.5",
+        env: { GITHUB_TOKEN: { type: "secret_ref", secretId: secret.id } },
+      },
+    }).where(eq(agents.id, agent.id));
+    await expect(verify()).resolves.toBe("complete");
+    expect(allocate).toHaveBeenCalledOnce();
+    expect(probe).toHaveBeenCalledOnce();
+    expect(probe.mock.calls[0][1].config.env).toMatchObject({ GITHUB_TOKEN: "ghp-fixture-pat" });
+    expect(release).toHaveBeenCalledExactlyOnceWith("released");
   });
 
   it("checks account access again after allocation and releases on revocation", async () => {

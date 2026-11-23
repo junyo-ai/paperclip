@@ -121,17 +121,23 @@ describe("StatusIcon — glyph size (PAP-243a)", () => {
 });
 
 
-describe("Slack idle status presentation", () => {
-  it("labels verified waiting conversations Idle in icons, labels, badges and picker triggers", () => {
+describe("Slack waiting status presentation", () => {
+  it("labels verified waiting conversations Waiting — distinct from idle and plain review", () => {
     const props = { status: "in_review", externalConversationState: "waiting" as const };
-    expect(renderToStaticMarkup(<StatusIcon {...props} showLabel />)).toContain(">Idle<");
-    expect(renderToStaticMarkup(<StatusIcon {...props} onChange={() => {}} />)).toContain('current: Idle');
-    expect(renderToStaticMarkup(<IssueStatusBadge {...props} />)).toContain(">Idle<");
+    const labeled = renderToStaticMarkup(<StatusIcon {...props} showLabel />);
+    expect(labeled).toContain(">Waiting<");
+    expect(labeled).not.toContain(">Idle<");
+    expect(labeled).not.toContain(">In review<");
+    // The amber waiting token drives the glyph, not the violet review hue.
+    expect(labeled).toContain("var(--status-task-icon-waiting)");
+    expect(renderToStaticMarkup(<StatusIcon {...props} onChange={() => {}} />)).toContain('current: Waiting');
+    expect(renderToStaticMarkup(<IssueStatusBadge {...props} />)).toContain(">Waiting<");
+    expect(renderToStaticMarkup(<IssueStatusBadge {...props} />)).toContain("var(--status-task-waiting)");
   });
 
   it.each(["in_review", "blocked", "done", "cancelled"])("preserves %s without verified waiting", (status) => {
     const html = renderToStaticMarkup(<StatusIcon status={status} externalConversationState="active" showLabel />);
-    expect(html).not.toContain("Idle");
+    expect(html).not.toContain("Waiting");
   });
 
   it("preserves an explicit terminal outcome even with stale waiting data", () => {

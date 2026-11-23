@@ -353,7 +353,7 @@ function formatIssueUpdatedVerb(details: ActivityDetails): string | null {
   const previous = asRecord(details._previous) ?? {};
   if (details.status !== undefined) {
     const from = previous.status;
-    const to = humanizeValue(details.status === "in_review" && details.externalConversationState === "waiting" ? "idle" : details.status);
+    const to = humanizeValue(details.status === "in_review" && details.externalConversationState === "waiting" ? "waiting" : details.status);
     return from
       ? `changed status from ${humanizeValue(from)} to ${to} on`
       : `changed status to ${to} on`;
@@ -387,7 +387,7 @@ function formatIssueUpdatedAction(details: ActivityDetails, options: ActivityFor
 
   if (details.status !== undefined) {
     const from = previous.status;
-    const to = humanizeValue(details.status === "in_review" && details.externalConversationState === "waiting" ? "idle" : details.status);
+    const to = humanizeValue(details.status === "in_review" && details.externalConversationState === "waiting" ? "waiting" : details.status);
     parts.push(
       from
         ? `changed the status from ${humanizeValue(from)} to ${to}`

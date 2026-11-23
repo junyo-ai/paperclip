@@ -168,6 +168,44 @@ describe("secret routes", () => {
     expect(mockSecretService.create).not.toHaveBeenCalled();
   });
 
+  it("warns when a GitHub-token-like secret uses a non-canonical name", async () => {
+    mockSecretService.create.mockResolvedValue({ id: "secret-1", companyId: "company-1", name: "GITHUB_PAT" });
+    const res = await request(createApp()).post("/api/companies/company-1/secrets").send({
+      name: "GITHUB_PAT",
+      value: "ghp_16CharClassicTokenToken",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.warnings).toHaveLength(1);
+    expect(res.body.warnings[0]).toMatchObject({
+      code: "github_token_secret_name",
+      reason: "name_matches",
+      canonicalName: "GITHUB_TOKEN",
+    });
+    expect(res.body.warnings[0].message).not.toContain("ghp_16CharClassicTokenToken");
+  });
+
+  it("returns no warnings for canonical GitHub token secret names", async () => {
+    mockSecretService.create.mockResolvedValue({ id: "secret-2", companyId: "company-1", name: "GITHUB_TOKEN" });
+    const res = await request(createApp()).post("/api/companies/company-1/secrets").send({
+      name: "GITHUB_TOKEN",
+      value: "ghp_16CharClassicTokenToken",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body).not.toHaveProperty("warnings");
+  });
+
+  it("warns on a rename to a non-canonical GitHub-like name", async () => {
+    mockSecretService.getById.mockResolvedValue({ id: "secret-3", companyId: "company-1", name: "OLD_NAME" });
+    mockSecretService.update.mockResolvedValue({ id: "secret-3", companyId: "company-1", name: "GITHUB_PAT" });
+    const res = await request(createApp()).patch("/api/secrets/secret-3").send({ name: "GITHUB_PAT" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toHaveLength(1);
+    expect(res.body.warnings[0].code).toBe("github_token_secret_name");
+  });
+
   it("returns sanitized AWS provider errors when managed secret creation fails", async () => {
     mockSecretService.create.mockRejectedValue(
       new HttpError(

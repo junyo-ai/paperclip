@@ -195,6 +195,10 @@ function Setup({
   const connectionModels = useConnectionModels(companyId, aiBinding, brandType);
   const [repository, setRepository] = useState("");
   const [branch, setBranch] = useState("");
+  // Optional hire-time credential copy source. The server merges the source
+  // agent's env secret references into this hire so verify passes on the
+  // first run instead of failing until an operator inserts each binding.
+  const [copyBindingsAgentId, setCopyBindingsAgentId] = useState("");
   const [createdInSession, setCreated] = useState<Agent | null>(null);
   const setupId = useRef(setupAgentId ?? crypto.randomUUID());
   if (setupAgentId) setupId.current = setupAgentId;
@@ -276,6 +280,13 @@ function Setup({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
   });
+  // Peers the hire can copy credential bindings from: same organization, not
+  // the agent being set up, not terminated. A terminated source's references
+  // may be revoked, and the setup target has nothing to copy from itself.
+  const credentialCopySources = (agents.data ?? []).filter(
+    (candidate) =>
+      candidate.id !== created?.id && candidate.status !== "terminated",
+  );
   const envs = useQuery({
     queryKey: queryKeys.environments.list(companyId),
     queryFn: () => environmentsApi.list(companyId),
@@ -553,7 +564,7 @@ function Setup({
   function preparedConfig(nextConnection = connection, setupRunner?: AgentRunner) {
     if (nativeCursorCloud && !model.trim()) throw new Error("Enter the exact Cursor Cloud model ID.");
     if (isKimi && !model.trim()) throw new Error("Enter the exact Kimi model ID.");
-    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
+    if (isKimi && !apiKey.trim() && !selectedBinding && !copyBindingsAgentId) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
     if (brandType === "antigravity_runtime" && (!model.trim() || model !== model.trim() || /\s/.test(model) || ["auto", "default"].includes(model.toLowerCase())))
       throw new Error("Choose or enter an exact Google Antigravity model ID.");
     if (brandType === "copilot_runtime" && !models.data?.some(candidate => candidate.id === model))
@@ -569,7 +580,8 @@ function Setup({
     if (
       ["cursor_cloud", "hermes_gateway"].includes(adapterType) &&
       !apiKey.trim() &&
-      !selectedBinding
+      !selectedBinding &&
+      !copyBindingsAgentId
     )
       throw new Error(
         adapterType === "cursor_cloud"
@@ -596,6 +608,26 @@ function Setup({
         ? { [envKey]: apiKey.trim() }
         : {}),
     };
+  }
+
+  function withCopiedCredentials(config: Record<string, unknown>): Record<string, unknown> {
+    if (!copyBindingsAgentId) return config;
+    const source = (agents.data ?? []).find(agent => agent.id === copyBindingsAgentId);
+    const sourceConfig = source?.adapterConfig && typeof source.adapterConfig === "object"
+      ? (source.adapterConfig as Record<string, unknown>) : null;
+    const sourceEnv = sourceConfig && typeof sourceConfig.env === "object"
+      ? (sourceConfig.env as Record<string, unknown>) : null;
+    const binding = adapterType === "hermes_gateway"
+      ? (source?.adapterType === adapterType ? sourceConfig?.apiKey : undefined)
+      : sourceEnv?.[envKey];
+    if (!binding || typeof binding !== "object" || !("type" in binding)
+      || !["secret_ref", "user_secret_ref"].includes(String((binding as Record<string, unknown>).type))) return config;
+    if (adapterType === "hermes_gateway") {
+      return config.apiKey !== undefined ? config : { ...config, apiKey: binding };
+    }
+    const env = config.env && typeof config.env === "object" ? { ...(config.env as Record<string, unknown>) } : {};
+    if (env[envKey] !== undefined) return config;
+    return { ...config, env: { ...env, [envKey]: binding } };
   }
 
   useEffect(() => {
@@ -742,7 +774,7 @@ function Setup({
         qualificationTransition.current = { run, companyId, environmentId, runner: qualified.runner };
         cache.setQueryData(queryKeys.adapters.availability(companyId, environmentId), qualified.adapters);
       }
-      const config = preparedConfig(nextConnection, qualified?.runner);
+      const config = withCopiedCredentials(preparedConfig(nextConnection, qualified?.runner));
       const tested = await testAgentSetup({
         companyId,
         agentId: created?.id,
@@ -817,6 +849,9 @@ function Setup({
           : {}),
         ...(connection?.applyStoredClaudeLogin
           ? { applyStoredClaudeLogin: true }
+          : {}),
+        ...(copyBindingsAgentId
+          ? { copyCredentialBindingsFromAgentId: copyBindingsAgentId }
           : {}),
       });
       setApiKey("");
@@ -1198,6 +1233,28 @@ function Setup({
                             onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
                               if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels();
                             }} />
+                        )}
+                        {credentialCopySources.length > 0 && (
+                          <Field
+                            label="Copy credential bindings from an existing agent"
+                            hint="Copies that agent's secret references into this agent so credential checks pass on the first run. Keys configured above win; a Claude login stays with its original agent."
+                          >
+                            <NativeSelect
+                              aria-label="Copy credential bindings from an existing agent"
+                              value={copyBindingsAgentId}
+                              onChange={(event) => {
+                                setCopyBindingsAgentId(event.target.value);
+                                resetTest();
+                              }}
+                            >
+                              <option value="">Don't copy</option>
+                              {credentialCopySources.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                          </Field>
                         )}
                         {(connectionModels ? connectionModels.error : models.error) && <p role="alert" className="text-sm text-destructive">Could not load models. Retry or enter a model ID manually.</p>}
                         {((showModel && !usingKimiApi) ||

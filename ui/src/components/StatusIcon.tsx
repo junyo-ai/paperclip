@@ -70,7 +70,9 @@ function blockedAttentionLabel(blockerAttention: IssueBlockerAttention | null | 
 
 /** Shared accessible/tooltip copy, including waiting and covered-blocker states. */
 export function getStatusIconLabel(status: string, externalConversationState?: "active" | "waiting" | null, blockerAttention?: IssueBlockerAttention | null, presentationStatus?: string | null): string {
-  const displayStatus = status === "in_review" && externalConversationState === "waiting" ? "idle" : status === "in_progress" && presentationStatus === "monitoring" ? "monitoring" : status;
+  // A human-input wait is display-only: it is not a settable status, and it
+  // must not read as an idle agent.
+  const displayStatus = status === "in_review" && externalConversationState === "waiting" ? "waiting" : status === "in_progress" && presentationStatus === "monitoring" ? "monitoring" : status;
   return status === "blocked" ? blockedAttentionLabel(blockerAttention) : statusLabel(displayStatus);
 }
 
@@ -88,7 +90,7 @@ export function getStatusIconLabel(status: string, externalConversationState?: "
  */
 export function StatusIcon({ status, displayStatus: presentationStatus, externalConversationState, blockerAttention, onChange, className, glyphContainerClassName, showLabel, size = "md" }: StatusIconProps) {
   const [open, setOpen] = useState(false);
-  const displayStatus = status === "in_review" && externalConversationState === "waiting" ? "idle" : status === "in_progress" && presentationStatus === "monitoring" ? "monitoring" : status;
+  const displayStatus = status === "in_review" && externalConversationState === "waiting" ? "waiting" : status === "in_progress" && presentationStatus === "monitoring" ? "monitoring" : status;
   const isCoveredBlocked = status === "blocked" && blockerAttention?.state === "covered";
   const ariaLabel = getStatusIconLabel(status, externalConversationState, blockerAttention, presentationStatus);
   const glyphStatus = isCoveredBlocked ? "in_queue" : displayStatus;

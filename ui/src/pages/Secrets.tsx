@@ -51,7 +51,7 @@ import type {
   UserSecretCoverageSummary,
   UserSecretDefinition,
 } from "@paperclipai/shared";
-import { hidesCompanySection } from "@paperclipai/shared";
+import { githubTokenSecretNameHint, hidesCompanySection } from "@paperclipai/shared";
 import { useCompany } from "../context/CompanyContext";
 import { useHiddenSettings } from "../hooks/useHiddenSettings";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -2687,6 +2687,24 @@ export function Secrets() {
                   Creating in {folderPath} — remove the chip to type a different path.
                 </p>
               ) : null}
+              {(() => {
+                if (editingDefinition || secretValueProvider !== "company") return null;
+                const hint = githubTokenSecretNameHint({
+                  name: createForm.name,
+                  value: createMode === "managed" ? createForm.value : null,
+                });
+                if (!hint) return null;
+                return (
+                  <p
+                    className="mt-1 flex items-start gap-1 text-(length:--text-micro) text-amber-600 dark:text-amber-400"
+                    role="alert"
+                    data-testid="secret-name-github-hint"
+                  >
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{hint.message}</span>
+                  </p>
+                );
+              })()}
             </div>
 
             {secretValueProvider === "company" && createMode === "managed" ? (

@@ -254,8 +254,8 @@ function RecentTasksList({
               label={entry.title}
               iconNode={entry.displayStatus === "monitoring" && !liveIssueIds.has(entry.id) ? <StatusIcon status={entry.status} displayStatus={entry.displayStatus} /> : undefined}
               trailing={entry.status === "in_review" && entry.externalConversationState === "waiting"
-                ? <span className="text-xs text-muted-foreground">Idle</span> : undefined}
-              trailingLabel={entry.status === "in_review" && entry.externalConversationState === "waiting" ? "Idle" : undefined}
+                ? <span className="text-xs text-muted-foreground">Waiting</span> : undefined}
+              trailingLabel={entry.status === "in_review" && entry.externalConversationState === "waiting" ? "Waiting" : undefined}
               className={rail ? undefined : "sidebar-action-link pointer-coarse:pr-8"}
               liveCount={liveIssueIds.has(entry.id) ? 1 : undefined}
             />

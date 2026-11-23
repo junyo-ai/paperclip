@@ -319,7 +319,8 @@ describe("ActiveAgentsPanel", () => {
         issue={{ title: "Slack conversation", identifier: "PAP-559", status: "in_review", externalConversationState: "waiting" }} />);
     });
     expect(container.querySelector('[aria-label="Agent 0 — Succeeded. View run"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="Task idle"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Task waiting"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Task idle"]')).toBeNull();
     expect(container.querySelector('[aria-label="Task in review"]')).toBeNull();
     await act(async () => root.unmount());
   });

@@ -106,6 +106,42 @@ describe("lifecycle failure diagnostics", () => {
       .toContain("Paperclip could not complete this step");
   });
 
+  it("waits for repair when a secret binding is missing during host verification", () => {
+    const error = { code: "harness_secret_binding_missing" };
+    expect(lifecycleVerificationNeedsRetry({ stage: "host", phase: "verifying" }, error)).toBe(true);
+    expect(lifecycleVerificationNeedsRetry({ stage: "plugin", phase: "verifying" }, error)).toBe(false);
+    expect(lifecycleVerificationNeedsRetry({ stage: "host", phase: "cleaning_up" }, error)).toBe(false);
+  });
+
+  it("lists sanitized missing binding paths in the failure message", () => {
+    const error = Object.assign(new Error("private provider detail"), {
+      code: "harness_secret_binding_missing",
+      missingBindingPaths: ["env.GITHUB_TOKEN", "env.OPENAI_API_KEY", "drop table agents; --", 42],
+    });
+    const message = lifecycleFailureMessage({ stage: "host", phase: "verifying" }, error);
+    expect(message).toContain("Missing bindings: env.GITHUB_TOKEN, env.OPENAI_API_KEY.");
+    expect(message).not.toContain("drop table");
+    expect(message).not.toContain("private provider detail");
+    expect(message).toContain("Automatic verification is paused");
+  });
+
+  it("lists binding paths only for the missing-binding failure code", () => {
+    const error = Object.assign(new Error("x"), {
+      code: "harness_test_failed", missingBindingPaths: ["env.GITHUB_TOKEN"],
+    });
+    expect(lifecycleFailureMessage({ stage: "host", phase: "verifying" }, error)).not.toContain("env.GITHUB_TOKEN");
+  });
+
+  it("caps the listed missing binding paths", () => {
+    const error = Object.assign(new Error("x"), {
+      code: "harness_secret_binding_missing",
+      missingBindingPaths: Array.from({ length: 7 }, (_, index) => `env.KEY_${index}`),
+    });
+    const message = lifecycleFailureMessage({ stage: "host", phase: "verifying" }, error);
+    expect(message).toContain("env.KEY_4, and others.");
+    expect(message).not.toContain("env.KEY_5");
+  });
+
   it.each(["host", "plugin", "claim", "renew", "scan", "defer"] as const)("reports %s failures with the available context", async stage => {
     const { store, driver, report, worker } = fixture();
     const error = new Error("private provider detail");

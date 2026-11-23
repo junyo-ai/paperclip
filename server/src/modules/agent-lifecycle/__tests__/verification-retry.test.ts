@@ -33,9 +33,9 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     await db.update(agents).set({ lifecycleState: "terminated", status: "terminated" }).where(eq(agents.companyId, companyId));
   });
   const current = async (id: string) => (await db.select().from(agents).where(eq(agents.id, id)))[0]!;
-  async function failed(code = "harness_test_failed") {
+  async function failed(code = "harness_test_failed", extra?: Record<string, unknown>) {
     const runHost = vi.fn(async (agent: LifecycleAgent) => {
-      if (agent.lifecycleState === "verifying") throw Object.assign(new Error("private provider detail"), { code });
+      if (agent.lifecycleState === "verifying") throw Object.assign(new Error("private provider detail"), { code, ...extra });
       return "complete" as const;
     });
     const driver = { requiredPluginIds: async () => [], runHost, runPlugin: async () => "complete" as const };
@@ -72,6 +72,26 @@ const support = external ? { supported: true } : await getEmbeddedPostgresTestSu
     await work.process(agent.id);
     expect(runHost).toHaveBeenCalledTimes(calls);
     expect((await current(agent.id)).lifecycleOperation).toEqual(agent.lifecycleOperation);
+  });
+
+  it("pauses a missing secret binding before any retry loop and names the binding", async () => {
+    const { agent, work, runHost } = await failed("harness_secret_binding_missing", {
+      missingBindingPaths: ["env.GITHUB_TOKEN"],
+    });
+    // The configuration failure pauses instead of retrying: retryRequired is
+    // set with no scheduled retry, no retry budget is spent, and the
+    // fixed-text error names the missing binding path.
+    expect(agent).toMatchObject({ lifecycleState: "verifying", status: "paused", lifecycleOperation: { retryRequired: true } });
+    expect(agent.lifecycleOperation).not.toHaveProperty("retryAt");
+    expect(agent.lifecycleOperation).not.toHaveProperty("verificationFailures");
+    expect(agent.lifecycleError).toContain("Missing bindings: env.GITHUB_TOKEN.");
+    expect(agent.lifecycleError).toContain("Automatic verification is paused");
+    expect(agent.lifecycleError).not.toContain("private provider detail");
+    // Binding the secret clears the pause through an explicit retry.
+    runHost.mockResolvedValue("complete");
+    await createAgentLifecycle(db).retry(agent.id);
+    await work.process(agent.id);
+    expect(await current(agent.id)).toMatchObject({ lifecycleState: "ready", status: "idle", lifecycleError: null });
   });
 
   it("permits an explicit retry of the same operation and completes verification before readiness", async () => {

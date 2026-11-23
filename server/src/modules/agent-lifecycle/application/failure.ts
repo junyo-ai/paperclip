@@ -3,6 +3,7 @@ import type { LifecycleFailure } from "./ports.js";
 // Only fixed text may leave this boundary. Provider errors can contain secrets.
 const reasons = {
   harness_test_failed: "The execution test did not pass. Open Configuration and run the agent test to inspect the failed checks.",
+  harness_secret_binding_missing: "A configured secret binding could not be resolved. Bind the secret to the agent in Configuration, then choose Retry now.",
   harness_auth_failed: "Authentication failed. Check the agent's AI connection or sign in to its execution tool, then retry.",
   harness_model_unavailable: "The selected model is unavailable. Choose a model supported by the agent's AI connection in Configuration, then retry.",
   harness_command_unavailable: "The execution command was not found. Check the command and its installation in the agent's environment, then retry.",
@@ -18,7 +19,24 @@ const transientCodes = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "4000
 const configurationFailures = new Set([
   "harness_auth_failed", "harness_model_unavailable",
   "harness_command_unavailable", "harness_cwd_invalid", "harness_probe_unexpected_output",
+  "harness_secret_binding_missing",
 ]);
+
+// The verify preflight names the missing bindings by their configuration paths
+// (for example env.GITHUB_TOKEN). Those paths come from the agent's own stored
+// configuration, not from a provider response, so listing them keeps the
+// fixed-text boundary intact. Each path must match a strict key shape before
+// it may appear in a failure message; anything else is dropped.
+const BINDING_PATH_PATTERN = /^(env\.[A-Za-z0-9_.-]{1,120}|[A-Za-z][A-Za-z0-9_.-]{0,119})$/;
+const MAX_LISTED_BINDING_PATHS = 5;
+
+function missingBindingPathList(error: unknown): string[] {
+  const candidate = error as { missingBindingPaths?: unknown } | null;
+  const raw = Array.isArray(candidate?.missingBindingPaths) ? candidate.missingBindingPaths : [];
+  return raw
+    .filter((path): path is string => typeof path === "string" && BINDING_PATH_PATTERN.test(path))
+    .slice(0, MAX_LISTED_BINDING_PATHS);
+}
 
 export function lifecycleVerificationNeedsRetry(context: LifecycleFailure, error: unknown): boolean {
   const code = lifecycleFailureCode(error) ?? "";
@@ -46,6 +64,13 @@ export function lifecycleFailureMessage(context: LifecycleFailure, error: unknow
   const code = lifecycleFailureCode(error);
   const reason = code && Object.hasOwn(reasons, code) ? reasons[code as keyof typeof reasons]
     : "Paperclip could not complete this step. It will retry automatically. If this continues, contact your instance administrator.";
-  return `${step} failed. ${reason}${lifecycleVerificationNeedsRetry(context, error)
+  // Name the missing configuration paths so an operator can fix each binding
+  // without opening the agent test. Sanitized above; provider output never
+  // reaches this list.
+  const missingPaths = code === "harness_secret_binding_missing" ? missingBindingPathList(error) : [];
+  const missingPathsSuffix = missingPaths.length > 0
+    ? ` Missing bindings: ${missingPaths.join(", ")}${missingPaths.length === MAX_LISTED_BINDING_PATHS ? ", and others" : ""}.`
+    : "";
+  return `${step} failed. ${reason}${missingPathsSuffix}${lifecycleVerificationNeedsRetry(context, error)
     ? " Automatic verification is paused. Update Configuration or choose Retry now." : ""}`;
 }

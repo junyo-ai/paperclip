@@ -69,6 +69,25 @@ export function agentHarnessVerificationService(db: Db, manager: PluginWorkerMan
       config = { ...config, ...selected.runtimeConfig };
     }
     if (binding) config = { ...config, env: stripAiAuthBindings(config.env) };
+    // Preflight: list declared secret references with no binding BEFORE any
+    // probe runs. Without this gate every verification attempt fails mid-setup
+    // on the unresolvable reference, burning the retry budget on a
+    // configuration problem no retry can fix. The surfaced paths name the
+    // agent's own configuration keys, which are safe to report.
+    const missingBindings = [
+      ...await secrets.collectMissingRuntimeBindings(agent.companyId, config.env,
+        { consumerType: "agent", consumerId: agent.id, responsibleUserId: responsibleUserId ?? null }),
+      ...typeof secrets.collectMissingAdapterConfigRuntimeBindings === "function"
+        ? await secrets.collectMissingAdapterConfigRuntimeBindings(agent.companyId, config, agent.adapterType,
+          { consumerType: "agent", consumerId: agent.id, responsibleUserId: responsibleUserId ?? null })
+        : [],
+    ];
+    if (missingBindings.length > 0) {
+      throw Object.assign(new Error("A configured secret binding is missing"), {
+        code: "harness_secret_binding_missing",
+        missingBindingPaths: [...new Set(missingBindings.map(missing => missing.configPath))].sort(),
+      });
+    }
     config = (await secrets.resolveAdapterConfigForRuntime(agent.companyId, config, context, { adapterType: agent.adapterType })).config;
     const environmentId = providerApi ? null : await tests.resolveAdapterTestEnvironmentId(agent.companyId, agent.defaultEnvironmentId, agent.adapterType === "paperclip_runner" && config.provider === "acpx" && config.acpxAgent === "copilot");
     if (environmentId) {

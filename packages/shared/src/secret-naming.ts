@@ -70,10 +70,6 @@ function canonicalNameFor(normalizedName: string): GithubTokenSecretName {
   return best?.name ?? GITHUB_TOKEN_SECRET_NAMES[0];
 }
 
-// OAuth application credentials and webhook/app signing material are GitHub-
-// adjacent but are not tokens; the checkout and providers never read them, and
-// advising a rename to GITHUB_TOKEN would be wrong for them. A token-shaped
-// value under one of these names still warns through the value branch.
 const GITHUB_NON_TOKEN_NAME_PATTERNS = [
   /CLIENT_?ID/, /CLIENT_?SECRET/, /OAUTH/, /WEBHOOK/, /APP_?PRIVATE_?KEY/,
 ] as const;
@@ -96,9 +92,6 @@ export function githubTokenSecretNameHint(input: {
 }): GithubTokenSecretNameHint | null {
   const name = input.name.trim();
   const normalizedName = name.toUpperCase();
-  // Secret lookup is by exact name, so only the name as typed counts as
-  // canonical — a lowercase "github_token" is stored but never read, and the
-  // operator must still get the rename hint.
   if ((GITHUB_TOKEN_SECRET_NAMES as readonly string[]).includes(name)) return null;
 
   const nameMatches = matchesGithubTokenNameShape(normalizedName);

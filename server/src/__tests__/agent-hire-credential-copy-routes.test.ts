@@ -118,7 +118,8 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
     return companyId;
   }
 
-  async function seedAgent(companyId: string, adapterType: string, env: Record<string, unknown>) {
+  async function seedAgent(companyId: string, adapterType: string, env: Record<string, unknown>,
+    extraConfig: Record<string, unknown> = {}) {
     const [row] = await db
       .insert(agents)
       .values({
@@ -126,7 +127,7 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
         name: `Source ${randomUUID().slice(0, 8)}`,
         role: "engineer",
         adapterType,
-        adapterConfig: { env },
+        adapterConfig: { env, ...extraConfig },
         runtimeConfig: {},
         permissions: { canCreateAgents: true },
       })
@@ -204,6 +205,50 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
       secretId: anthropicSecret.id,
       versionSelector: "2",
     });
+  });
+
+  it("copies a hermes gateway apiKey binding onto a hermes hire", async () => {
+    const companyId = await seedCompany();
+    const gatewaySecret = await createCompanySecret(companyId, "hermes-copied-key");
+    const source = await seedAgent(companyId, "hermes_gateway", {}, {
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: secretRef(gatewaySecret.id),
+    });
+
+    const res = await hire(userActor(), companyId, {
+      name: "Hermes Copy Child",
+      role: "engineer",
+      adapterType: "hermes_gateway",
+      adapterConfig: { apiBaseUrl: "http://127.0.0.1:8642" },
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.agent?.adapterConfig?.apiKey).toMatchObject({ type: "secret_ref", secretId: gatewaySecret.id });
+    const bindings = await childBindings(companyId, res.body.agent.id);
+    expect(bindings.find(row => row.configPath === "apiKey")).toMatchObject({
+      secretId: gatewaySecret.id,
+      versionSelector: "latest",
+    });
+  });
+
+  it("does not copy a hermes apiKey binding onto a hire of another adapter", async () => {
+    const companyId = await seedCompany();
+    const gatewaySecret = await createCompanySecret(companyId, "hermes-copied-key");
+    const source = await seedAgent(companyId, "hermes_gateway", {}, {
+      apiBaseUrl: "http://127.0.0.1:8642",
+      apiKey: secretRef(gatewaySecret.id),
+    });
+
+    const res = await hire(userActor(), companyId, {
+      name: "Claude Child From Hermes Source",
+      role: "engineer",
+      adapterType: "claude_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.agent?.adapterConfig?.apiKey).toBeUndefined();
   });
 
   it("lets a key the hire request supplies win over the copied reference", async () => {
@@ -333,9 +378,6 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
       GITHUB_TOKEN: secretRef(githubSecret.id),
     });
 
-    // The board actor represents the hire dialog: it may copy keys outside a
-    // local adapter's credential allowlist, and the required board approval
-    // still snapshots the copied references for review.
     const res = await hire(userActor(), companyId, {
       name: "Approval Copy Child",
       role: "engineer",
@@ -349,9 +391,6 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
     expect(approvalEnv.GITHUB_TOKEN).toMatchObject({ type: "secret_ref", secretId: githubSecret.id });
   });
 
-  // The config-read permission ladder requires an active agent membership
-  // before it considers any grant, so seeding both mirrors how an operator
-  // would actually set this up.
   async function grantConfigRead(companyId: string, agentId: string, sourceId: string) {
     await db.insert(companyMemberships).values({
       companyId,
@@ -387,16 +426,12 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
 
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("not readable");
-    // The failed hire created no additional agent.
     expect(await db.select().from(agents).where(eq(agents.companyId, companyId))).toHaveLength(2);
   });
 
   it("copies bindings for an agent actor with an agents:read grant on the source", async () => {
     const companyId = await seedCompany();
     const secret = await createCompanySecret(companyId, "ant-granted-source");
-    // claude_local agents may only hold their adapter's credential keys, so
-    // the copied reference uses ANTHROPIC_API_KEY, which the local-adapter
-    // allowlist permits.
     const source = await seedAgent(companyId, "claude_local", {
       ANTHROPIC_API_KEY: secretRef(secret.id),
     });
@@ -420,11 +455,6 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
     const source = await seedAgent(companyId, "claude_local", {
       ANTHROPIC_API_KEY: secretRef(anthropicSecret.id),
     });
-    // The parent's fixed OAuth binding is inherited onto the child before the
-    // copy step run, so the copy must not add a conflicting ANTHROPIC_API_KEY.
-    // The binding carries the canonical fields persistence normalizes onto a
-    // stored reference, because the claim gate compares the parent's stored
-    // reference with the child's normalized copy exactly, including version.
     const parent = await seedAgent(companyId, "claude_local", {
       CLAUDE_CODE_OAUTH_TOKEN: {
         ...FIXED_CLAUDE_OAUTH_BINDING,

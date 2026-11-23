@@ -89,10 +89,6 @@ export function projectTaskInterruption(issue: ProjectionIssue, input: Projectio
       : [agent?.pauseReason, project?.pauseReason, company?.pauseReason].some(reason => reason === "budget" || reason === "budget_exceeded")
         ? "budget" : input.paused || project?.pausedAt || agent?.status === "paused" || company?.status === "paused" ? "resume" : null;
   if (userAction) return { ...base, responsibility: "user", state: "waiting_for_user", userAction };
-  // A fixed attempt supersedes stale failure surfaces — failure surfaces only.
-  // A succeeded run with a saved input and a pending approval keeps its
-  // actionable card above; once that settles, the receipt alone must never
-  // re-present the succeeded run as failed.
   if (run.status === "succeeded") {
     const settling = !!wait && wait.requestedAt.getTime() > now - 10_000 && system?.state !== "exhausted";
     return settling ? { ...base, state: "working" } : base;

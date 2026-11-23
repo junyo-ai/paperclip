@@ -337,7 +337,7 @@ export function executionWorkspaceRepositoryService(db: Db) {
       if (!input.remoteTarget || !input.remoteLease) throw conflict("Remote repository preparation requires its bound sandbox");
       const available = acquisitionRestricted ? [] : await catalog(input.companyId, input.responsibleUserId, input.responsibleUserId === "local-board");
       const resolveAuth = createGitRemoteAuthProvider(db, input.companyId, { issueId: input.issueId, heartbeatRunId: input.runId,
-        agentId: input.agentId, responsibleUserId: input.responsibleUserId });
+        agentId: input.agentId, responsibleUserId: input.responsibleUserId, projectId: workspace.projectId });
       const prepared: Array<{ id: string; cwd: string; repoUrl: string; relativePath: string; pinnedCommit: string; branchName: string | null }> = [];
       for (const row of rows) {
         assertAcquisitionReceipt(row, acquisitionRestricted);
@@ -383,7 +383,7 @@ export function executionWorkspaceRepositoryService(db: Db) {
     }
     const root = await measureRunPhase("workspace.repository.paths", () => fs.realpath(input.cwd));
     const available = acquisitionRestricted ? [] : await catalog(input.companyId, input.responsibleUserId, input.responsibleUserId === "local-board");
-    const resolveAuth = createGitRemoteAuthProvider(db, input.companyId, { issueId: input.issueId, heartbeatRunId: input.runId, agentId: input.agentId, responsibleUserId: input.responsibleUserId });
+    const resolveAuth = createGitRemoteAuthProvider(db, input.companyId, { issueId: input.issueId, heartbeatRunId: input.runId, agentId: input.agentId, responsibleUserId: input.responsibleUserId, projectId: workspace.projectId });
     const sources = rows.map(row => {
       assertAcquisitionReceipt(row, acquisitionRestricted);
       return resolveAcquisitionSource(row.catalogRepositoryId ? { kind: "catalog", id: row.catalogRepositoryId } : { kind: "url", url: row.repoUrl }, available, acquisitionRestricted);

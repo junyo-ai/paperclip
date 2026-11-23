@@ -1782,9 +1782,6 @@ describeEmbeddedPostgres("secretService", () => {
   });
 
   it("reports a user_secret_ref to a missing definition as a missing binding", async () => {
-    // The preflight must keep treating a definition that does not exist as a
-    // configuration problem (harness_secret_binding_missing) while any other
-    // lookup error propagates instead of being reported as missing.
     const companyId = await seedCompany();
     const svc = secretService(db);
     const env = {

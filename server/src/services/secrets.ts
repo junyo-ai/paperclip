@@ -104,7 +104,7 @@ const COMING_SOON_SECRET_PROVIDERS: ReadonlySet<SecretProvider> = new Set([
   "gcp_secret_manager",
   "vault",
 ]);
-const FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
+export const FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS: Readonly<Record<string, readonly string[]>> = {
   hermes_gateway: ["apiKey"],
 };
 const USER_SECRET_DEFINITION_KEY_UNIQUE_CONSTRAINT = "user_secret_definitions_company_key_uq";
@@ -5370,10 +5370,6 @@ export function secretService(db: Db | DbTransaction) {
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
         } catch (error) {
-          // Only a definition that does not exist is a configuration problem a
-          // repair can fix. Any other lookup failure (a transient database or
-          // connection error) must propagate so callers retry instead of
-          // reporting a missing binding that pauses automatic verification.
           if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(
@@ -5532,10 +5528,6 @@ export function secretService(db: Db | DbTransaction) {
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
         } catch (error) {
-          // Only a definition that does not exist is a configuration problem a
-          // repair can fix. Any other lookup failure (a transient database or
-          // connection error) must propagate so callers retry instead of
-          // reporting a missing binding that pauses automatic verification.
           if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(

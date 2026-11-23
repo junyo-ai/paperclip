@@ -158,7 +158,7 @@ import { evaluateCodexCredentialReadiness } from "@paperclipai/adapter-codex-loc
 import type { AdapterAuthSignal, AdapterAuthSignalResponse, CodexAccountBindingClaim } from "@paperclipai/shared";
 import { adapterSettingsService } from "../services/adapter-settings.js";
 import { skillVersionSelectionMap } from "../services/runtime-skill-selections.js";
-import { isFixedClaudeOAuthBinding, secretService } from "../services/secrets.js";
+import { FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS, isFixedClaudeOAuthBinding, secretService } from "../services/secrets.js";
 import { authorizationDeniedDetails } from "../services/authorization.js";
 import { providerTraceStore } from "../services/provider-trace-store.js";
 import {
@@ -2368,23 +2368,15 @@ export function agentRoutes(
   // company: a cross-company copy would leak credential references across the
   // company boundary even though the values themselves stay server-resolved.
   //
-  // Reading the source's environment is a configuration read, so agent actors
-  // need the same agent_config:read grant the read routes enforce; a caller
-  // that may create agents but may not read the source's configuration cannot
-  // route that configuration onto a new agent either.
-  //
   // A fixed Claude OAuth binding stays claim-bound to its original agent: it is
   // skipped and reported, because copying it would trip the create-transaction
-  // binding invariant and silently break the source agent's own claim. For the
-  // same reason an ANTHROPIC_API_KEY is never copied onto a hire that already
-  // holds the fixed binding: the create-transaction precedence check would
-  // reject the pair with the generic Claude credential conflict, naming a key
-  // the hire request itself never supplied.
+  // binding invariant and silently break the source agent's own claim.
   async function applyCopiedCredentialBindings(
     req: Request,
     companyId: string,
     sourceAgentId: string | null | undefined,
     adapterConfig: Record<string, unknown>,
+    targetAdapterType?: string | null,
   ): Promise<{ adapterConfig: Record<string, unknown>; warnings: AgentConfigurationWarning[]; changed: boolean }> {
     if (!sourceAgentId) return { adapterConfig, warnings: [], changed: false };
     const source = await svc.getById(sourceAgentId);
@@ -2394,14 +2386,18 @@ export function agentRoutes(
     if (!(await actorCanReadConfigurationsForCompany(req, companyId, sourceAgentId))) {
       throw forbidden("The source agent's configuration is not readable by this actor");
     }
-    const sourceEnv = asRecord(asRecord(source.adapterConfig)?.env);
-    if (!sourceEnv) return { adapterConfig, warnings: [], changed: false };
+    const sourceConfig = asRecord(source.adapterConfig);
+    const sourceEnv = asRecord(sourceConfig?.env);
+    const outOfEnvFields = source.adapterType && source.adapterType === targetAdapterType
+      ? FALLBACK_ADAPTER_SCHEMA_SECRET_FIELDS[source.adapterType] ?? []
+      : [];
+    if (!sourceEnv && outOfEnvFields.length === 0) return { adapterConfig, warnings: [], changed: false };
     const targetEnv = asRecord(adapterConfig.env) ?? {};
     const targetHasFixedClaudeOAuth = isFixedClaudeOAuthBinding(targetEnv.CLAUDE_CODE_OAUTH_TOKEN);
     const nextEnv: Record<string, unknown> = { ...targetEnv };
     const warnings: AgentConfigurationWarning[] = [];
     let changed = false;
-    for (const [key, value] of Object.entries(sourceEnv)) {
+    for (const [key, value] of Object.entries(sourceEnv ?? {})) {
       if (nextEnv[key] !== undefined) continue;
       if (!isInheritableCredentialReference(value)) continue;
       if (isFixedClaudeOAuthBinding(value)) {
@@ -2423,7 +2419,20 @@ export function agentRoutes(
       nextEnv[key] = { ...value };
       changed = true;
     }
-    return changed ? { adapterConfig: { ...adapterConfig, env: nextEnv }, warnings, changed } : { adapterConfig, warnings, changed };
+    const copiedSchemaFields: Record<string, unknown> = {};
+    for (const field of outOfEnvFields) {
+      if (adapterConfig[field] !== undefined) continue;
+      const value = sourceConfig?.[field];
+      if (!isInheritableCredentialReference(value)) continue;
+      copiedSchemaFields[field] = { ...value };
+      changed = true;
+    }
+    if (!changed) return { adapterConfig, warnings, changed: false };
+    return {
+      adapterConfig: { ...adapterConfig, ...(Object.keys(nextEnv).length > 0 ? { env: nextEnv } : {}), ...copiedSchemaFields },
+      warnings,
+      changed: true,
+    };
   }
 
   function applyCreateDefaultsByAdapterType(
@@ -4603,13 +4612,10 @@ export function agentRoutes(
       companyId,
       copiedBindingsFromAgentId,
       authInheritance.adapterConfig,
+      hireInput.adapterType,
     );
     configurationWarnings.push(...copiedBindings.warnings);
     if (copiedBindings.changed) {
-      // Copied keys never passed the agent local-adapter guard, which ran
-      // before the copy merged the source's environment in. Re-run it on the
-      // merged config so inherited references meet the same allowlist as
-      // directly supplied ones instead of reaching the host environment.
       assertNoAgentLocalAdapterHostCommandMutation(req, hireInput.adapterType, copiedBindings.adapterConfig,
         await callerUsesAiConnectionPool(req, companyId));
     }

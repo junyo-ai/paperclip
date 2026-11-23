@@ -3450,15 +3450,6 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
   ): Promise<ResolvedAnchorWorkspaceForRun> {
     const issueId =
       readNonEmptyString(context.issueId) ?? readNonEmptyString(context.taskId);
-    const resolveGitAuth = createGitRemoteAuthProvider(db, agent.companyId, {
-      issueId,
-      heartbeatRunId: readNonEmptyString(context.executionIdentityRunId),
-      responsibleUserId:
-        readNonEmptyString(context.responsibleUserId) ??
-        readNonEmptyString(context.responsible_user_id),
-      agentId: agent.id,
-      projectId: readNonEmptyString(context.projectId),
-    });
     const contextProjectId = readNonEmptyString(context.projectId);
     const contextProjectWorkspaceId = readNonEmptyString(
       context.projectWorkspaceId,
@@ -3485,6 +3476,15 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
     const [selectedSource] = preferredProjectWorkspaceId ? await db.select({ projectId: projectWorkspaces.projectId }).from(projectWorkspaces)
       .where(and(eq(projectWorkspaces.id, preferredProjectWorkspaceId), eq(projectWorkspaces.companyId, agent.companyId))) : [];
     const resolvedProjectId = selectedSource?.projectId ?? issueProjectId ?? contextProjectId;
+    const resolveGitAuth = createGitRemoteAuthProvider(db, agent.companyId, {
+      issueId,
+      heartbeatRunId: readNonEmptyString(context.executionIdentityRunId),
+      responsibleUserId:
+        readNonEmptyString(context.responsibleUserId) ??
+        readNonEmptyString(context.responsible_user_id),
+      agentId: agent.id,
+      projectId: resolvedProjectId,
+    });
     const forceTaskDirectory = workspaceSelection?.kind === "task_directory";
     const useProjectWorkspace = opts?.useProjectWorkspace !== false;
     const workspaceProjectId = useProjectWorkspace && !forceTaskDirectory ? resolvedProjectId : null;
@@ -3762,13 +3762,14 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
           .filter((id): id is string => id !== null),
         referencedProjectFailures: referenced.failures, warnings: [...anchor.warnings, ...referenced.warnings] };
     }
-    const resolveGitAuth = createGitRemoteAuthProvider(db, agent.companyId, {
-      issueId,
-      heartbeatRunId: readNonEmptyString(context.executionIdentityRunId),
-      responsibleUserId,
-      agentId: agent.id,
-      projectId: anchor.projectId,
-    });
+    const resolveGitAuthForProject = (projectId: string | null) =>
+      createGitRemoteAuthProvider(db, agent.companyId, {
+        issueId,
+        heartbeatRunId: readNonEmptyString(context.executionIdentityRunId),
+        responsibleUserId,
+        agentId: agent.id,
+        projectId,
+      });
     const { additionalWorkspaces, warnings, failures } =
       await resolveAdditionalRunWorkspaces(issueId, anchor.projectId, {
         enabled: true,
@@ -3783,7 +3784,7 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
         resolveProjectWorkspace: (project) =>
           resolveAdditionalProjectWorkspace(
             { companyId: agent.companyId, project },
-            defaultAdditionalProjectWorkspaceDeps(db, resolveGitAuth,
+            defaultAdditionalProjectWorkspaceDeps(db, resolveGitAuthForProject(project.projectId),
               managedLocalSourceGuard(agent, issueId, readNonEmptyString(context.executionIdentityRunId))),
           ),
       });

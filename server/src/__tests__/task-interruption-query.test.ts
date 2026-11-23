@@ -194,8 +194,6 @@ describe.skipIf(!support.supported)("task interruption latest run query", () => 
     }).returning();
     captureTaskInterruptionFailure.mockClear();
     const result = await taskInterruptionPresentations(db, companyId, [...input, { ...input[0]!, companyId: randomUUID() }]);
-    // The saved message on the succeeded run settles into a resolved receipt
-    // instead of a stale failure card, so it never captures a failure.
     expect(captureTaskInterruptionFailure).toHaveBeenCalledTimes(2);
     for (const n of [0, 7]) {
       expect(result.get(input[n]!.id)).toMatchObject({ responsibility: "system", state: "failed" });

@@ -195,6 +195,10 @@ function Setup({
   const connectionModels = useConnectionModels(companyId, aiBinding, brandType);
   const [repository, setRepository] = useState("");
   const [branch, setBranch] = useState("");
+  // Optional hire-time credential copy source. The server merges the source
+  // agent's env secret references into this hire so verify passes on the
+  // first run instead of failing until an operator inserts each binding.
+  const [copyBindingsAgentId, setCopyBindingsAgentId] = useState("");
   const [createdInSession, setCreated] = useState<Agent | null>(null);
   const setupId = useRef(setupAgentId ?? crypto.randomUUID());
   if (setupAgentId) setupId.current = setupAgentId;
@@ -276,6 +280,13 @@ function Setup({
     queryKey: queryKeys.agents.list(companyId),
     queryFn: () => agentsApi.list(companyId),
   });
+  // Peers the hire can copy credential bindings from: same organization, not
+  // the agent being set up, not terminated. A terminated source's references
+  // may be revoked, and the setup target has nothing to copy from itself.
+  const credentialCopySources = (agents.data ?? []).filter(
+    (candidate) =>
+      candidate.id !== created?.id && candidate.status !== "terminated",
+  );
   const envs = useQuery({
     queryKey: queryKeys.environments.list(companyId),
     queryFn: () => environmentsApi.list(companyId),
@@ -818,6 +829,9 @@ function Setup({
         ...(connection?.applyStoredClaudeLogin
           ? { applyStoredClaudeLogin: true }
           : {}),
+        ...(copyBindingsAgentId
+          ? { copyCredentialBindingsFromAgentId: copyBindingsAgentId }
+          : {}),
       });
       setApiKey("");
       setConnection(null);
@@ -1198,6 +1212,28 @@ function Setup({
                             onChange={binding => { binding.mode !== "router" && setRuntimeAiBinding(binding); resetTest();
                               if (accountCatalogAvailable && hashKey([aiBinding ?? null]) === hashKey([binding ?? null])) void refreshAccountModels();
                             }} />
+                        )}
+                        {credentialCopySources.length > 0 && (
+                          <Field
+                            label="Copy credential bindings from an existing agent"
+                            hint="Copies that agent's secret references into this agent so credential checks pass on the first run. Keys configured above win; a Claude login stays with its original agent."
+                          >
+                            <NativeSelect
+                              aria-label="Copy credential bindings from an existing agent"
+                              value={copyBindingsAgentId}
+                              onChange={(event) => {
+                                setCopyBindingsAgentId(event.target.value);
+                                resetTest();
+                              }}
+                            >
+                              <option value="">Don't copy</option>
+                              {credentialCopySources.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                          </Field>
                         )}
                         {(connectionModels ? connectionModels.error : models.error) && <p role="alert" className="text-sm text-destructive">Could not load models. Retry or enter a model ID manually.</p>}
                         {((showModel && !usingKimiApi) ||

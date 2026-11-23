@@ -148,6 +148,12 @@ export const createAgentHireSchema = createAgentSchema.omit({ setupId: true }).e
   // Agent-authored hires may explicitly request the caller's native runner
   // settings. The server consumes this intent; it is never an agent column.
   inheritRuntimeFrom: z.literal("caller").optional(),
+  // Hire-time credential copy: when set, the source agent's env credential
+  // references (secret_ref / user_secret_ref) are merged into the new agent's
+  // env so verify passes without an operator hand-inserting bindings after the
+  // first failed run. Same-company is enforced server-side; keys the hire
+  // request already supplies win. Consumed at hire time; never an agent column.
+  copyCredentialBindingsFromAgentId: z.string().guid().optional(),
 });
 
 export type CreateAgentHire = z.infer<typeof createAgentHireSchema>;

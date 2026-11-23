@@ -251,6 +251,32 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
     expect(res.body.agent?.adapterConfig?.apiKey).toBeUndefined();
   });
 
+  it("keeps a copied CODEX_HOME user-secret reference during codex key isolation", async () => {
+    const companyId = await seedCompany();
+    const keySecret = await createCompanySecret(companyId, "sk-copied-openai");
+    await db.insert(userSecretDefinitions).values({
+      companyId,
+      key: "CODEX_HOME",
+      name: "Codex home",
+      status: "active",
+    });
+    const source = await seedAgent(companyId, "codex_local", {
+      OPENAI_API_KEY: secretRef(keySecret.id),
+      CODEX_HOME: { type: "user_secret_ref", key: "CODEX_HOME" },
+    });
+
+    const res = await hire(userActor(), companyId, {
+      name: "Codex Copy Child",
+      role: "engineer",
+      adapterType: "codex_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(childEnvOf(res).OPENAI_API_KEY).toMatchObject({ type: "secret_ref", secretId: keySecret.id });
+    expect(childEnvOf(res).CODEX_HOME).toMatchObject({ type: "user_secret_ref", key: "CODEX_HOME" });
+  });
+
   it("lets a key the hire request supplies win over the copied reference", async () => {
     const companyId = await seedCompany();
     const sourceSecret = await createCompanySecret(companyId, "ghp-source-pat");

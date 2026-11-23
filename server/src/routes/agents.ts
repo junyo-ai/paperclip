@@ -2254,7 +2254,8 @@ export function agentRoutes(
   function codexLocalEnvKeyConfigured(value: unknown): boolean {
     if (asEnvBindingString(value)) return true;
     const record = asRecord(value);
-    return record?.type === "secret_ref" && typeof record.secretId === "string";
+    if (record?.type === "secret_ref") return typeof record.secretId === "string";
+    return record?.type === "user_secret_ref" && typeof record.key === "string";
   }
 
   // codex_local agents inherit whatever Codex login is already on the device

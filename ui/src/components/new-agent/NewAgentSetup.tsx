@@ -618,7 +618,7 @@ function Setup({
     const sourceEnv = sourceConfig && typeof sourceConfig.env === "object"
       ? (sourceConfig.env as Record<string, unknown>) : null;
     const binding = adapterType === "hermes_gateway"
-      ? sourceConfig?.apiKey
+      ? (source?.adapterType === adapterType ? sourceConfig?.apiKey : undefined)
       : sourceEnv?.[envKey];
     if (!binding || typeof binding !== "object" || !("type" in binding)
       || !["secret_ref", "user_secret_ref"].includes(String((binding as Record<string, unknown>).type))) return config;

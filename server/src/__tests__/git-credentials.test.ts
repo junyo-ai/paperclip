@@ -282,7 +282,7 @@ describe("resolveBoundGitHubTokenSecretRefs", () => {
     // Agent rows first (canonical env.GITHUB_TOKEN before env.GH_TOKEN), then the project
     // row; a row for another agent sorts last and is the production query's scope to exclude.
     expect(refs.map((ref) => ref.secretId)).toEqual(["agent-github", "agent-gh", "proj-id", "other-agent"]);
-    expect(refs[0]).toMatchObject({ secretName: "GITHUB_PAT", configPath: "env.GITHUB_TOKEN", versionSelector: "2" });
+    expect(refs[0]).toMatchObject({ secretName: "GITHUB_PAT", configPath: "env.GITHUB_TOKEN", versionSelector: 2 });
   });
 
   it("degrades to an empty list when the catalog read fails", async () => {

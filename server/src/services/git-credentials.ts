@@ -12,7 +12,7 @@ import {
   type Db,
 } from "@paperclipai/db";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { GITHUB_TOKEN_SECRET_NAMES } from "@paperclipai/shared";
+import { GITHUB_TOKEN_SECRET_NAMES, type SecretVersionSelector } from "@paperclipai/shared";
 import { isGitHubDotCom } from "./github-fetch.js";
 import { secretService } from "./secrets.js";
 import { toolAccessService } from "./tool-access.js";
@@ -209,7 +209,7 @@ export type BoundGitHubTokenSecretRef = {
   /** The company secret's name (may be non-canonical, e.g. GITHUB_PAT). */
   secretName: string;
   configPath: string;
-  versionSelector: string;
+  versionSelector: SecretVersionSelector;
 };
 
 /**
@@ -276,7 +276,11 @@ export async function resolveBoundGitHubTokenSecretRefs(
         || (pathOrder.get(a.configPath) ?? 0) - (pathOrder.get(b.configPath) ?? 0)
         || a.secretId.localeCompare(b.secretId))
       .map(({ secretId, secretName, configPath, versionSelector }) => ({
-        secretId, secretName, configPath, versionSelector: versionSelector || "latest",
+        secretId, secretName, configPath,
+        // Match the runtime binding projection: "latest" (or unset) stays literal;
+        // a pinned binding version is the numeric selector resolveSecretValue expects.
+        versionSelector: versionSelector === "latest" || !versionSelector
+          ? "latest" : Number(versionSelector),
       }));
   } catch {
     return [];

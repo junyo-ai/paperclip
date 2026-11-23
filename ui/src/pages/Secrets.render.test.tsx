@@ -885,6 +885,38 @@ describe("Secrets page layout", () => {
     });
   });
 
+  it("warns inline when a company secret name looks GitHub-token-like but is not canonical", async () => {
+    const root = await renderSecrets(container);
+
+    const newSecretButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("New secret"),
+    ) as HTMLButtonElement | undefined;
+    await act(async () => {
+      newSecretButton?.click();
+    });
+    await flushReact();
+
+    const nameInput = document.getElementById("new-secret-name") as HTMLInputElement;
+    await act(async () => {
+      setInputValue(nameInput, "GITHUB_PAT");
+    });
+    await flushReact();
+
+    const hint = document.querySelector('[data-testid="secret-name-github-hint"]');
+    expect(hint?.textContent).toContain("GITHUB_PAT");
+    expect(hint?.textContent).toContain("GITHUB_TOKEN");
+
+    await act(async () => {
+      setInputValue(nameInput, "GITHUB_TOKEN");
+    });
+    await flushReact();
+    expect(document.querySelector('[data-testid="secret-name-github-hint"]')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("explains AWS managed secret creation failures with actionable safe details", async () => {
     const rawProviderMessage =
       "AccessDeniedException: arn:aws:sts::123456789012:assumed-role/prod/Paperclip is not authorized";

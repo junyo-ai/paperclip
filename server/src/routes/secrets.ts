@@ -5,6 +5,7 @@ import {
   createSecretSchema,
   createUserSecretDefinitionSchema,
   createUserSecretValueSchema,
+  githubTokenSecretNameHint,
   remoteSecretImportPreviewSchema,
   remoteSecretImportSchema,
   rotateSecretSchema,
@@ -915,7 +916,11 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
       details: { name: created.name, provider: created.provider },
     });
 
-    res.status(201).json(created);
+    // Non-blocking contract hint: workspace checkout only reads well-known GitHub-token
+    // secret names (or explicit env.<name> bindings), so a likely mismatch is worth
+    // surfacing while the operator can still rename the secret.
+    const warning = githubTokenSecretNameHint({ name: created.name, value: req.body.value });
+    res.status(201).json(warning ? { ...created, warnings: [warning] } : created);
   });
 
   router.post(
@@ -1070,7 +1075,8 @@ export function secretRoutes(db: Db, deps: SecretRoutesDeps = {}) {
       details: { name: updated.name },
     });
 
-    res.json(updated);
+    const warning = githubTokenSecretNameHint({ name: updated.name });
+    res.json(warning ? { ...updated, warnings: [warning] } : updated);
   });
 
   router.get("/secrets/:id/usage", async (req, res) => {

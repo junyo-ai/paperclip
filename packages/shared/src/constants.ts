@@ -780,6 +780,16 @@ export type SecretAccessOutcome = (typeof SECRET_ACCESS_OUTCOMES)[number];
 export const SECRET_PROJECTION_CLASSES = ["unclassified", "class_3_static_lease"] as const;
 export type SecretProjectionClass = (typeof SECRET_PROJECTION_CLASSES)[number];
 
+/**
+ * Company-secret names probed for a GitHub token by workspace checkout and the
+ * GitHub external-object provider, in priority order. Secrets held under other
+ * names are only used for GitHub when explicitly bound to an agent/project
+ * `env.<name>` path (see `githubTokenSecretNameHint` for the create-time warning
+ * that keeps operators inside this contract).
+ */
+export const GITHUB_TOKEN_SECRET_NAMES = ["GITHUB_TOKEN", "GH_TOKEN", "PAPERCLIP_GITHUB_TOKEN"] as const;
+export type GithubTokenSecretName = (typeof GITHUB_TOKEN_SECRET_NAMES)[number];
+
 export const CLASS3_STATIC_LEASE_ALLOWLIST = [
   {
     key: "slack.bot_token",

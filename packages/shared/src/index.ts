@@ -703,7 +703,15 @@ export {
   type PluginApiRouteCheckoutPolicy,
   type PluginEventType,
   type PluginBridgeErrorCode,
+  type GithubTokenSecretName,
 } from "./constants.js";
+export { GITHUB_TOKEN_SECRET_NAMES } from "./constants.js";
+export {
+  githubTokenSecretNameHint,
+  looksLikeGithubTokenValue,
+  type GithubTokenSecretNameHint,
+  type GithubTokenSecretNameHintReason,
+} from "./secret-naming.js";
 
 export {
   generateSummarySlotSchema,

@@ -163,6 +163,17 @@ describe("fixed-run failure card supersession", () => {
       .toMatchObject({ state: "working", canRetry: false });
   });
 
+  it("keeps a pending approval actionable on a succeeded run with a saved input", () => {
+    const wait = { id: "retry", requestedAt: stale, sourceRunId: succeededRun.id,
+      executionWaitReason: "execution_active" };
+    expect(projectTaskInterruption(issue,
+      { run: succeededRun, agent, paused: false, approval: true, wait }, now))
+      .toMatchObject({ state: "waiting_for_user", userAction: "approval", intentId: "retry" });
+    expect(projectTaskInterruption(issue,
+      { run: succeededRun, agent, paused: false, approval: true, wait }, now))
+      .not.toHaveProperty("retryWait");
+  });
+
   it("keeps failure presentation for a failed run carrying the same stale receipt", () => {
     const wait = { id: "retry", requestedAt: stale, sourceRunId: run.id,
       executionWaitReason: "execution_active" };

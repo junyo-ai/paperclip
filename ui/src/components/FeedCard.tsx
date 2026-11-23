@@ -13,6 +13,7 @@ import {
   Settings,
   CircleAlert,
   CircleCheck,
+  CircleEllipsis,
   CircleSlash,
   PencilLine,
   PauseCircle,
@@ -246,6 +247,11 @@ function getIconSpec(
 
 function StatusCircle({ status }: { status: string }) {
   const colorClass = issueStatusIcon[status] ?? issueStatusIconDefault;
+  // Waiting borrows the shared task-status glyph so the feed distinguishes it
+  // from todo, which otherwise renders the same plain amber ring.
+  if (status === "waiting") {
+    return <CircleEllipsis className={cn("h-4 w-4 shrink-0", colorClass)} strokeWidth={2} />;
+  }
   const isFilled = status === "done";
   return (
     <span className={cn("relative inline-flex h-4 w-4 shrink-0 rounded-full border-2", colorClass)}>

@@ -333,7 +333,10 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
       GITHUB_TOKEN: secretRef(githubSecret.id),
     });
 
-    const res = await hire(agentActor(companyId, source.id), companyId, {
+    // The board actor represents the hire dialog: it may copy keys outside a
+    // local adapter's credential allowlist, and the required board approval
+    // still snapshots the copied references for review.
+    const res = await hire(userActor(), companyId, {
       name: "Approval Copy Child",
       role: "engineer",
       adapterType: "claude_local",
@@ -344,5 +347,129 @@ describeEmbeddedPostgres("hired agent credential binding copy", () => {
     expect(res.body.agent.status).toBe("pending_approval");
     const approvalEnv = ((res.body.approval?.payload?.adapterConfig as { env?: Record<string, unknown> } | undefined)?.env) ?? {};
     expect(approvalEnv.GITHUB_TOKEN).toMatchObject({ type: "secret_ref", secretId: githubSecret.id });
+  });
+
+  // The config-read permission ladder requires an active agent membership
+  // before it considers any grant, so seeding both mirrors how an operator
+  // would actually set this up.
+  async function grantConfigRead(companyId: string, agentId: string, sourceId: string) {
+    await db.insert(companyMemberships).values({
+      companyId,
+      principalType: "agent",
+      principalId: agentId,
+      status: "active",
+      membershipRole: "member",
+    });
+    await db.insert(principalPermissionGrants).values({
+      companyId,
+      principalType: "agent",
+      principalId: agentId,
+      permissionKey: "agents:read",
+      scope: { agentIds: [sourceId] },
+      grantedByUserId: null,
+    });
+  }
+
+  it("rejects a copy source whose configuration the agent actor cannot read", async () => {
+    const companyId = await seedCompany();
+    const secret = await createCompanySecret(companyId, "ghp-unreadable-source");
+    const source = await seedAgent(companyId, "claude_local", {
+      GITHUB_TOKEN: secretRef(secret.id),
+    });
+    const caller = await seedAgent(companyId, "claude_local", {});
+
+    const res = await hire(agentActor(companyId, caller.id), companyId, {
+      name: "Unreadable Source Copy Attempt",
+      role: "engineer",
+      adapterType: "claude_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("not readable");
+    // The failed hire created no additional agent.
+    expect(await db.select().from(agents).where(eq(agents.companyId, companyId))).toHaveLength(2);
+  });
+
+  it("copies bindings for an agent actor with an agents:read grant on the source", async () => {
+    const companyId = await seedCompany();
+    const secret = await createCompanySecret(companyId, "ant-granted-source");
+    // claude_local agents may only hold their adapter's credential keys, so
+    // the copied reference uses ANTHROPIC_API_KEY, which the local-adapter
+    // allowlist permits.
+    const source = await seedAgent(companyId, "claude_local", {
+      ANTHROPIC_API_KEY: secretRef(secret.id),
+    });
+    const caller = await seedAgent(companyId, "claude_local", {});
+    await grantConfigRead(companyId, caller.id, source.id);
+
+    const res = await hire(agentActor(companyId, caller.id), companyId, {
+      name: "Granted Copy Child",
+      role: "engineer",
+      adapterType: "claude_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(childEnvOf(res).ANTHROPIC_API_KEY).toMatchObject({ type: "secret_ref", secretId: secret.id });
+  });
+
+  it("does not copy ANTHROPIC_API_KEY onto a hire that holds the fixed Claude OAuth binding", async () => {
+    const companyId = await seedCompany();
+    const anthropicSecret = await createCompanySecret(companyId, "sk-ant-copy-source");
+    const source = await seedAgent(companyId, "claude_local", {
+      ANTHROPIC_API_KEY: secretRef(anthropicSecret.id),
+    });
+    // The parent's fixed OAuth binding is inherited onto the child before the
+    // copy step run, so the copy must not add a conflicting ANTHROPIC_API_KEY.
+    // The binding carries the canonical fields persistence normalizes onto a
+    // stored reference, because the claim gate compares the parent's stored
+    // reference with the child's normalized copy exactly, including version.
+    const parent = await seedAgent(companyId, "claude_local", {
+      CLAUDE_CODE_OAUTH_TOKEN: {
+        ...FIXED_CLAUDE_OAUTH_BINDING,
+        version: "latest",
+        required: true,
+        allowMissingOverride: false,
+      },
+    });
+    await grantConfigRead(companyId, parent.id, source.id);
+
+    const res = await hire(agentActor(companyId, parent.id), companyId, {
+      name: "OAuth Hold Copy Child",
+      role: "engineer",
+      adapterType: "claude_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const childEnv = childEnvOf(res);
+    expect(childEnv.CLAUDE_CODE_OAUTH_TOKEN).toMatchObject({ type: "user_secret_ref", key: "CLAUDE_CODE_OAUTH_TOKEN" });
+    expect(childEnv.ANTHROPIC_API_KEY).toBeUndefined();
+    const warnings = (res.body.agent.configurationWarnings ?? []) as Array<{ code: string; message: string }>;
+    expect(warnings.some(warning =>
+      warning.code === "credential_binding_skipped" && warning.message.includes("ANTHROPIC_API_KEY"),
+    )).toBe(true);
+  });
+
+  it("rejects copied keys the agent local-adapter guard would reject for a direct request", async () => {
+    const companyId = await seedCompany();
+    const preloadSecret = await createCompanySecret(companyId, "libpreload.so.1");
+    const source = await seedAgent(companyId, "claude_local", {
+      LD_PRELOAD: secretRef(preloadSecret.id),
+    });
+    const caller = await seedAgent(companyId, "claude_local", {});
+    await grantConfigRead(companyId, caller.id, source.id);
+
+    const res = await hire(agentActor(companyId, caller.id), companyId, {
+      name: "Guarded Copy Attempt",
+      role: "engineer",
+      adapterType: "claude_local",
+      copyCredentialBindingsFromAgentId: source.id,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("Agent keys cannot configure host-executed local adapter settings");
+    expect(await db.select().from(agents).where(eq(agents.companyId, companyId))).toHaveLength(2);
   });
 });

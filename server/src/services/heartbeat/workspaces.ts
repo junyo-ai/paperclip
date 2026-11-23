@@ -3414,6 +3414,7 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
           resolveGitAuth: createGitRemoteAuthProvider(db, agent.companyId, {
             issueId: input.issueId, heartbeatRunId: input.runId, agentId: agent.id,
             responsibleUserId: input.responsibleUserId,
+            projectId: workspace.projectId,
           }),
         });
         return original.cwd;
@@ -3456,6 +3457,7 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
         readNonEmptyString(context.responsibleUserId) ??
         readNonEmptyString(context.responsible_user_id),
       agentId: agent.id,
+      projectId: readNonEmptyString(context.projectId),
     });
     const contextProjectId = readNonEmptyString(context.projectId);
     const contextProjectWorkspaceId = readNonEmptyString(
@@ -3765,6 +3767,7 @@ export function createHeartbeatWorkspaceResolver(db: Db) {
       heartbeatRunId: readNonEmptyString(context.executionIdentityRunId),
       responsibleUserId,
       agentId: agent.id,
+      projectId: anchor.projectId,
     });
     const { additionalWorkspaces, warnings, failures } =
       await resolveAdditionalRunWorkspaces(issueId, anchor.projectId, {

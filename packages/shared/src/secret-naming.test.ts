@@ -19,11 +19,29 @@ describe("looksLikeGithubTokenValue", () => {
 });
 
 describe("githubTokenSecretNameHint", () => {
-  it("stays quiet for canonical names regardless of case-insensitive match", () => {
+  it("stays quiet for canonical names exactly as typed", () => {
     for (const name of GITHUB_TOKEN_SECRET_NAMES) {
       expect(githubTokenSecretNameHint({ name, value: "ghp_16CharClassicTokenToken" })).toBeNull();
     }
-    expect(githubTokenSecretNameHint({ name: "github_token" })).toBeNull();
+  });
+
+  it("warns on a lowercase canonical name because lookup is exact", () => {
+    const hint = githubTokenSecretNameHint({ name: "github_token" });
+    expect(hint?.reason).toBe("name_matches");
+    expect(hint?.canonicalName).toBe("GITHUB_TOKEN");
+  });
+
+  it("stays quiet for GitHub OAuth and webhook credential names", () => {
+    expect(githubTokenSecretNameHint({ name: "GITHUB_CLIENT_ID", value: "Iv1.abc123def456" })).toBeNull();
+    expect(githubTokenSecretNameHint({ name: "GITHUB_CLIENT_SECRET", value: "abc123def4567890" })).toBeNull();
+    expect(githubTokenSecretNameHint({ name: "dev/github/oauth/clientsecret", value: "abc123def4567890" })).toBeNull();
+    expect(githubTokenSecretNameHint({ name: "GITHUB_WEBHOOK_SECRET", value: "abc123def4567890" })).toBeNull();
+  });
+
+  it("still warns when an OAuth-named secret actually holds a token", () => {
+    const hint = githubTokenSecretNameHint({ name: "GITHUB_CLIENT_ID", value: "ghp_16CharClassicTokenToken" });
+    expect(hint?.reason).toBe("value_matches");
+    expect(hint?.canonicalName).toBe("GITHUB_TOKEN");
   });
 
   it("warns on GitHub-like names that are not canonical", () => {

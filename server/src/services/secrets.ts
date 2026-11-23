@@ -5369,7 +5369,12 @@ export function secretService(db: Db | DbTransaction) {
         let definition: typeof userSecretDefinitions.$inferSelect | null = null;
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
-        } catch {
+        } catch (error) {
+          // Only a definition that does not exist is a configuration problem a
+          // repair can fix. Any other lookup failure (a transient database or
+          // connection error) must propagate so callers retry instead of
+          // reporting a missing binding that pauses automatic verification.
+          if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(
               entry,
@@ -5526,7 +5531,12 @@ export function secretService(db: Db | DbTransaction) {
         let definition: typeof userSecretDefinitions.$inferSelect | null = null;
         try {
           definition = await resolveUserSecretDefinition(companyId, { definitionKey: entry.binding.key });
-        } catch {
+        } catch (error) {
+          // Only a definition that does not exist is a configuration problem a
+          // repair can fix. Any other lookup failure (a transient database or
+          // connection error) must propagate so callers retry instead of
+          // reporting a missing binding that pauses automatic verification.
+          if (!(error instanceof HttpError && error.status === 404)) throw error;
           missingUserSecretBindings.push(
             missingUserSecretDefinitionRuntimeBinding(
               entry,

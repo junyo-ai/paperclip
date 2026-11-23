@@ -564,7 +564,11 @@ function Setup({
   function preparedConfig(nextConnection = connection, setupRunner?: AgentRunner) {
     if (nativeCursorCloud && !model.trim()) throw new Error("Enter the exact Cursor Cloud model ID.");
     if (isKimi && !model.trim()) throw new Error("Enter the exact Kimi model ID.");
-    if (isKimi && !apiKey.trim() && !selectedBinding) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
+    // A selected copy source satisfies the credential gates below: the hire
+    // request carries copyCredentialBindingsFromAgentId and the server merges
+    // the source's binding into the environment. A source without a usable
+    // binding still surfaces, precisely, in the verification preflight.
+    if (isKimi && !apiKey.trim() && !selectedBinding && !copyBindingsAgentId) throw new Error("Enter KIMI_API_KEY or select an organization secret.");
     if (brandType === "antigravity_runtime" && (!model.trim() || model !== model.trim() || /\s/.test(model) || ["auto", "default"].includes(model.toLowerCase())))
       throw new Error("Choose or enter an exact Google Antigravity model ID.");
     if (brandType === "copilot_runtime" && !models.data?.some(candidate => candidate.id === model))
@@ -580,7 +584,8 @@ function Setup({
     if (
       ["cursor_cloud", "hermes_gateway"].includes(adapterType) &&
       !apiKey.trim() &&
-      !selectedBinding
+      !selectedBinding &&
+      !copyBindingsAgentId
     )
       throw new Error(
         adapterType === "cursor_cloud"
@@ -607,6 +612,28 @@ function Setup({
         ? { [envKey]: apiKey.trim() }
         : {}),
     };
+  }
+
+  // The server copies the source agent's credential references into the hire
+  // when copyCredentialBindingsFromAgentId is set, but preparation and testing
+  // run before that hire request. Merge the source's reference for this
+  // adapter's credential key into a prepared config so the test exercises what
+  // the hire will actually resolve. A key the target already supplies wins, so
+  // explicit credentials stay overrides; when the source has no usable
+  // reference the config passes through and the test reports the missing
+  // credential honestly.
+  function withCopiedCredentials(config: Record<string, unknown>): Record<string, unknown> {
+    if (!copyBindingsAgentId) return config;
+    const source = (agents.data ?? []).find(agent => agent.id === copyBindingsAgentId);
+    const sourceEnv = source?.adapterConfig && typeof source.adapterConfig === "object"
+      ? (source.adapterConfig as Record<string, unknown>).env : null;
+    const binding = sourceEnv && typeof sourceEnv === "object"
+      ? (sourceEnv as Record<string, unknown>)[envKey] : null;
+    if (!binding || typeof binding !== "object" || !("type" in binding)
+      || !["secret_ref", "user_secret_ref"].includes(String((binding as Record<string, unknown>).type))) return config;
+    const env = config.env && typeof config.env === "object" ? { ...(config.env as Record<string, unknown>) } : {};
+    if (env[envKey] !== undefined) return config;
+    return { ...config, env: { ...env, [envKey]: binding } };
   }
 
   useEffect(() => {
@@ -753,7 +780,7 @@ function Setup({
         qualificationTransition.current = { run, companyId, environmentId, runner: qualified.runner };
         cache.setQueryData(queryKeys.adapters.availability(companyId, environmentId), qualified.adapters);
       }
-      const config = preparedConfig(nextConnection, qualified?.runner);
+      const config = withCopiedCredentials(preparedConfig(nextConnection, qualified?.runner));
       const tested = await testAgentSetup({
         companyId,
         agentId: created?.id,

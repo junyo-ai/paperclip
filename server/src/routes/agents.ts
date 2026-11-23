@@ -2368,22 +2368,37 @@ export function agentRoutes(
   // company: a cross-company copy would leak credential references across the
   // company boundary even though the values themselves stay server-resolved.
   //
+  // Reading the source's environment is a configuration read, so agent actors
+  // need the same agent_config:read grant the read routes enforce; a caller
+  // that may create agents but may not read the source's configuration cannot
+  // route that configuration onto a new agent either.
+  //
   // A fixed Claude OAuth binding stays claim-bound to its original agent: it is
   // skipped and reported, because copying it would trip the create-transaction
-  // binding invariant and silently break the source agent's own claim.
+  // binding invariant and silently break the source agent's own claim. For the
+  // same reason an ANTHROPIC_API_KEY is never copied onto a hire that already
+  // holds the fixed binding: the create-transaction precedence check would
+  // reject the pair with the generic Claude credential conflict, naming a key
+  // the hire request itself never supplied.
   async function applyCopiedCredentialBindings(
+    req: Request,
     companyId: string,
     sourceAgentId: string | null | undefined,
     adapterConfig: Record<string, unknown>,
-  ): Promise<{ adapterConfig: Record<string, unknown>; warnings: AgentConfigurationWarning[] }> {
-    if (!sourceAgentId) return { adapterConfig, warnings: [] };
+  ): Promise<{ adapterConfig: Record<string, unknown>; warnings: AgentConfigurationWarning[]; changed: boolean }> {
+    if (!sourceAgentId) return { adapterConfig, warnings: [], changed: false };
     const source = await svc.getById(sourceAgentId);
     if (!source || source.companyId !== companyId) {
       throw unprocessable("copyCredentialBindingsFromAgentId must reference an agent in the same company");
     }
+    if (!(await actorCanReadConfigurationsForCompany(req, companyId, sourceAgentId))) {
+      throw forbidden("The source agent's configuration is not readable by this actor");
+    }
     const sourceEnv = asRecord(asRecord(source.adapterConfig)?.env);
-    if (!sourceEnv) return { adapterConfig, warnings: [] };
-    const nextEnv: Record<string, unknown> = { ...(asRecord(adapterConfig.env) ?? {}) };
+    if (!sourceEnv) return { adapterConfig, warnings: [], changed: false };
+    const targetEnv = asRecord(adapterConfig.env) ?? {};
+    const targetHasFixedClaudeOAuth = isFixedClaudeOAuthBinding(targetEnv.CLAUDE_CODE_OAUTH_TOKEN);
+    const nextEnv: Record<string, unknown> = { ...targetEnv };
     const warnings: AgentConfigurationWarning[] = [];
     let changed = false;
     for (const [key, value] of Object.entries(sourceEnv)) {
@@ -2397,10 +2412,18 @@ export function agentRoutes(
         });
         continue;
       }
+      if (key === "ANTHROPIC_API_KEY" && targetHasFixedClaudeOAuth) {
+        warnings.push({
+          code: "credential_binding_skipped",
+          field: "copyCredentialBindingsFromAgentId",
+          message: `${source.name} holds an ANTHROPIC_API_KEY binding, but this agent uses the Claude login token, so the key was not copied.`,
+        });
+        continue;
+      }
       nextEnv[key] = { ...value };
       changed = true;
     }
-    return changed ? { adapterConfig: { ...adapterConfig, env: nextEnv }, warnings } : { adapterConfig, warnings };
+    return changed ? { adapterConfig: { ...adapterConfig, env: nextEnv }, warnings, changed } : { adapterConfig, warnings, changed };
   }
 
   function applyCreateDefaultsByAdapterType(
@@ -4576,11 +4599,20 @@ export function agentRoutes(
       hireInput.runtimeConfig,
     );
     const copiedBindings = await applyCopiedCredentialBindings(
+      req,
       companyId,
       copiedBindingsFromAgentId,
       authInheritance.adapterConfig,
     );
     configurationWarnings.push(...copiedBindings.warnings);
+    if (copiedBindings.changed) {
+      // Copied keys never passed the agent local-adapter guard, which ran
+      // before the copy merged the source's environment in. Re-run it on the
+      // merged config so inherited references meet the same allowlist as
+      // directly supplied ones instead of reaching the host environment.
+      assertNoAgentLocalAdapterHostCommandMutation(req, hireInput.adapterType, copiedBindings.adapterConfig,
+        await callerUsesAiConnectionPool(req, companyId));
+    }
     const requestedAdapterConfig = applyCodexLocalKeyIsolation(
       companyId,
       hiredAgentId,

@@ -8,10 +8,10 @@ describe("activity formatting", () => {
     ["agent-approver", { id: "agent-approver", name: "Approver Bot" } as Agent],
   ]);
 
-  it("labels a Slack settlement as idle while retaining actual review wording", () => {
+  it("labels a Slack settlement as waiting while retaining actual review wording", () => {
     const details = { status: "in_review", externalConversationState: "waiting" };
-    expect(formatActivityVerb("issue.updated", details)).toBe("changed status to idle on");
-    expect(formatIssueActivityAction("issue.updated", details)).toBe("changed the status to idle");
+    expect(formatActivityVerb("issue.updated", details)).toBe("changed status to waiting on");
+    expect(formatIssueActivityAction("issue.updated", details)).toBe("changed the status to waiting");
     expect(formatActivityVerb("issue.updated", { status: "in_review" })).toBe("changed status to in review on");
   });
 

@@ -351,6 +351,10 @@
   --status-task-in_progress: #2563eb;
   --status-task-monitoring: var(--status-task-in_progress);
   --status-task-icon-monitoring: var(--status-task-icon-in_progress);
+  /* Display-only: in_review while the conversation waits on a person. Amber —
+     attention needed, not dead — and distinct from plain in_review violet. */
+  --status-task-waiting: var(--status-task-todo);
+  --status-task-icon-waiting: var(--status-task-icon-todo);
   --status-task-in_review: #7c3aed;
   --status-task-done: #22c55e;
   --status-task-blocked: #dc2626;

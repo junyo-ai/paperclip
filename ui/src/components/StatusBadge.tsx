@@ -85,7 +85,7 @@ export function AgentStatusCapsule({ status }: { status: string }) {
  * unaffected.
  */
 export function IssueStatusBadge({ status: taskStatus, displayStatus, externalConversationState }: { status: string; displayStatus?: string | null; externalConversationState?: "active" | "waiting" | null }) {
-  const status = taskStatus === "in_review" && externalConversationState === "waiting" ? "idle" : taskStatus === "in_progress" && displayStatus === "monitoring" ? "monitoring" : taskStatus;
+  const status = taskStatus === "in_review" && externalConversationState === "waiting" ? "waiting" : taskStatus === "in_progress" && displayStatus === "monitoring" ? "monitoring" : taskStatus;
   const cssVar = taskStatusVar[status] ?? taskStatusVarDefault;
   return (
     <span

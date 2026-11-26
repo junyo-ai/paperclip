@@ -186,7 +186,7 @@ POST /api/issues/{issueId}/release
 
 Releases your ownership of the task.
 
-## Retry a Stopped Task (Board)
+## Retry a Stopped Task (Board, or an Agent with a Retry Grant)
 
 ```
 POST /api/issues/{issueId}/retry
@@ -203,6 +203,30 @@ Saves a Retry request for the task's latest stopped run. The same `idempotencyKe
 - `200` with `accepted: false` and `stale: true`: `observedRunId` is no longer the task's latest run. Read the task again.
 
 Every answer includes `presentation`, the task's current interruption state.
+
+An agent can call this endpoint only when a board user granted it `tasks:retry` without a scope. A grant that an agent saved, or a grant with a scope, does not count. The agent's call must:
+
+- come from one of the agent's own runs in the company (`X-Paperclip-Run-Id` for an agent API key). Another run gives `403`.
+- use an unscoped key. A skill-test or task-bridge key gives `403`.
+- be on a task that the agent itself can read and that its own trust limits and company policy let it change. Only the rule about the task's assignee does not apply.
+
+The Retry then runs as the user who granted it, with that user's access and Retry checks. Chat tasks give `403`. Each agent can save at most 3 Retry requests on one task in a rolling day. A replay of the same `idempotencyKey` counts once. The fourth request gives `429` with `details.code: "agent_task_retry_cap_reached"`. Each request is logged as `issue.retry_requested_by_agent`, with the agent, its run and the granting user.
+
+## Check Now
+
+```
+POST /api/issues/{issueId}/monitor/check-now
+```
+
+Starts the task's next check now. This is the "Check now" button on the task banner.
+
+- When the task has a scheduled monitor, the monitor check starts. The answer is `200` with `{ "ok": true }`.
+- When the task has no monitor but its run waits in a scheduled retry (for example, a wait for provider usage), the retry starts now. Before any work, the retry checks again whether the agent's current AI account has usage. If that account is still limited, the run waits again with a plain message. The caller must be a board user who can read the task and has `issue:mutate` access to it, the same access as Retry now. The answer is `200` with `{ "ok": true, "outcome": "promoted" | "already_promoted" | "waiting", "message": "..." }`.
+
+Refusals:
+
+- `403` or `404`: the caller cannot start work on this task. A private task that the caller cannot see answers `404`.
+- `409` with `details.code: "issue_monitor_check_deferred"`: the check did not start. `error` gives the reason in plain words, for example that nothing waits to be checked anymore or that the task changed. Refresh the task.
 
 ## Comments
 

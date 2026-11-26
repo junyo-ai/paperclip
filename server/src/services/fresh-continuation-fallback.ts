@@ -28,6 +28,9 @@ import { readRunCancellation } from "./run-cancellation.js";
 import { PERMANENT_SOURCE_RETRY_CLASSES, UNVERIFIABLE_SOURCE_CODES, readSystemRecovery } from "./system-recovery-state.js";
 import { RESTART_CLASS_FAILURE_CODES, continuationCauseIsSystemOwned, continuationCauseIsSystemOwnedSql, continuesAutomaticallySql,
   isPersonOwnedFailureCode, recoveryRunSql } from "./continuation-cause.js";
+import { readSystemRecovery } from "./system-recovery-state.js";
+import { readWorkspaceProviderFailure } from "./workspace-provider-failure.js";
+import { RESTART_CLASS_FAILURE_CODES, continuationCauseIsSystemOwned, isPersonOwnedFailureCode } from "./continuation-cause.js";
 import { sharedContinuationAttempts } from "./recovery/continuation-ledger.js";
 import { canonicalExecutionUuid } from "./execution-identity.js";
 
@@ -589,9 +592,17 @@ export async function continueFreshInTransaction(tx: Db, input: Input): Promise<
   const aliveWait = writer === "alive" ? pending("previous_process_running", new Date(now.getTime() + step)) : null;
   if (aliveWait) return aliveWait;
   const fenced = await fenceSourceWorkspace(tx, run);
+  const workspaceProviderFailure = readWorkspaceProviderFailure(run.resultJson);
+  const workspaceBindingInvalidated = workspaceProviderFailure?.retryable === false
+    && workspaceProviderFailure.reason === "binding_mismatch";
   // Never claim a stop that was not proven: record what isolates the successor.
+  // Only a workspace binding mismatch forces a fresh isolated workspace; other
+  // non-retryable operator/provider errors (e.g. credential_unavailable,
+  // unsupported_operation) preserve the usable task workspace.
   const isolation: FreshContinuationIsolation = fenced || remoteSource ? "remote_epoch"
-    : writer === "ended" && !pastBound() && !refused ? "writer_ended" : "fresh_isolated_workspace";
+    : writer === "ended" && !pastBound() && !refused && !workspaceBindingInvalidated
+      ? "writer_ended"
+      : "fresh_isolated_workspace";
   if (isolation === "fresh_isolated_workspace" && delivery === "saved_input") delivery = "recorded";
   const unverified = await unverifiedActions(tx, run);
   const created = await createdObjects(tx, run);
@@ -607,7 +618,9 @@ export async function continueFreshInTransaction(tx: Db, input: Input): Promise<
       ? `Paperclip abandoned unverified workspace epoch ${fenced.abandonedEpoch} of run ${run.id}; the continuation restores `
         + `${fenced.snapshotId ? `committed snapshot ${fenced.snapshotId}` : "the workspace source"} into a new root.`
       : isolation === "fresh_isolated_workspace"
-        ? `The previous writer of run ${run.id} is not proven stopped, so the continuation starts in a new isolated workspace; no unverified files are applied.`
+        ? workspaceBindingInvalidated
+          ? `The previous workspace of run ${run.id} could not be reused (${workspaceProviderFailure.reason}), so the continuation starts in a new isolated workspace.`
+          : `The previous writer of run ${run.id} is not proven stopped, so the continuation starts in a new isolated workspace; no unverified files are applied.`
         : `The continuation of run ${run.id} starts from the task's last saved workspace; no unverified files are applied.` };
   const freshContinuation = { schema: FRESH_CONTINUATION_SCHEMA, sourceRunId: run.id, trigger: input.trigger,
     failureCode: run.errorCode ?? null, delivery, recordedAt: now.toISOString(), isolation,

@@ -37,6 +37,9 @@ import { dismissAutomaticCompletionReviews } from "./automatic-completion-review
 import { findSupersededExternalReviewRequests } from "./superseded-external-review-requests.js";
 import { getNativeReviewAssignment, readNativeReviewAssignmentContext } from "./native-review-participant.js";
 import { toolCallLoopContinuationKey } from "./repeated-tool-failure-guard.js";
+import { cancelStoppedRunContinuation, readPersistedNativeToolReceiptLimitStop } from "./native-tool-receipt-limit.js";
+import { isNativeEnvironmentBlocker } from "./native-environment-blocker.js";
+import { hasQueuedChatRequest } from "./first-turn-queued-input.js";
 import { conversationNativeDecision, isConversation, settleConversationTurnForRun } from "../agent-conversations.js";
 import { issueTreeControlService } from "../issue-tree-control.js";
 import { COMPLETION_REVIEW_STAGE_REASON, completionReviewStageEntry } from "../issue-execution-policy.js";
@@ -70,6 +73,7 @@ import {
   type NativeAuthoritativeIssueStatus,
   gateDoneOnConfiguredReview,
 } from "./status-arbiter.js";
+import { evaluateBlockerAgentHandoff } from "./blocker-owner-handoff.js";
 import { recordNativeWorkAssessment } from "./work-assessments.js";
 import {
   commitNativeStatusDecision,
@@ -1747,6 +1751,22 @@ export async function finalizeNativeRun(input: {
     // issue route decides `status: "done"`. Review runs keep their own path.
     const reviewStage = isConversation(authoritativeIssue) || reviewContext
       ? { kind: "none" as const } : completionReviewStageEntry(authoritativeIssue, run.agentId);
+    await cancelStoppedRunContinuation(input.db, { companyId: run.companyId, resultJson: savedStop }, toolCallLoopContinuationKey(run.id));
+    const namedBlockerAgentId = assessment.blocker?.ownerAgentId && assessment.blocker.ownerAgentId !== run.agentId
+      ? assessment.blocker.ownerAgentId : null;
+    const blockerHandoffLocked = namedBlockerAgentId !== null && !(await evaluateBlockerAgentHandoff(input.db, {
+      companyId: run.companyId,
+      issue: authoritativeIssue,
+      runId: run.id,
+      actorAgentId: run.agentId,
+      responsibleUserId: run.responsibleUserId,
+      driverKind: run.driverKind,
+      contextSnapshot: run.contextSnapshot,
+      runnerProfileJson: run.runnerProfileJson,
+      targetAgentId: namedBlockerAgentId,
+      unblockAction: assessment.blocker!.unblockAction,
+      requireTaskOwner: true,
+    })).allowed;
     const statusInput: Parameters<typeof resolveNativeFinalizerStatus>[0] = {
       requiredQualityReviewSatisfied: qualityReview.satisfied,
       executionStageApprovedByRun: await executionStageApprovedByRun(input.db, run, authoritativeIssue),
@@ -1761,6 +1781,15 @@ export async function finalizeNativeRun(input: {
       providerModelRejected: providerFailure?.errorCode === "native_provider_model_rejected" && ownsProviderFailureDecision,
       providerOverloaded: providerFailure?.errorCode === "native_provider_overloaded" && ownsProviderFailureDecision,
       providerFailureSuperseded: providerFailure?.errorCode === "native_provider_overloaded" && !ownsProviderFailureDecision,
+      toolReceiptLimitStopped: terminalState !== "succeeded" && ownsProviderFailureDecision && !reviewContext
+        && !stopRequested && await readPersistedNativeToolReceiptLimitStop(input.db, run, resultRow.turnId),
+      environmentBlocker: terminalState === "succeeded" && ownsProviderFailureDecision && !reviewContext && !stopRequested
+        && isNativeEnvironmentBlocker(result),
+      agentBlockerRecoverable: terminalState === "succeeded" && ownsProviderFailureDecision && !reviewContext && !stopRequested
+        && result.reportedWorkDisposition === "blocked",
+      blockerHandoffLocked,
+      hasQueuedChatRequest: terminalState === "succeeded" && result.reportedWorkDisposition === "blocked"
+        && await hasQueuedChatRequest(input.db, { companyId: run.companyId, issueId: authoritativeIssue.id, agentId: run.agentId }),
       failureRetryCount: executionFailureRetryCount(run),
       // Only the task's current owner may turn its own failed continuation
       // into a blocker; the committer rechecks that under the issue lock.

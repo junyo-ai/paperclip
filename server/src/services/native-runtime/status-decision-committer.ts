@@ -5,6 +5,8 @@ import { forbidden, HttpError } from "../../errors.js";
 import { agentInteractionDeliveryDenial, agentWakeInteractionTexts, INTERACTION_DELIVERY_DENIED, withInteractionDeliveryOrigin } from "../agent-interaction-delivery.js";
 import { notifyExternalAgentSettlement } from "../../modules/external-agents/index.js";
 import { lockCurrentNativeWorkAssessmentEvidence } from "./work-assessments.js";
+import { nativeBlockerUserId } from "./native-blocker-owner.js";
+import { evaluateBlockerAgentHandoff } from "./blocker-owner-handoff.js";
 import { hasNativeWorkspaceFinalizationOwner } from "./native-workspace-finalization-recovery-state.js";
 import { tryLockNativeWorkspaceFinalization } from "./native-workspace-finalization-ownership.js";
 import { lockCurrentNativeCompletionContract } from "./completion-contracts.js";
@@ -1743,7 +1745,13 @@ export async function commitNativeStatusDecision(input: {
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!issue) throw new NativeStatusRaceError();
-    const [originRun] = await tx.select({ agentId: heartbeatRuns.agentId }).from(heartbeatRuns)
+    const [originRun] = await tx.select({
+      agentId: heartbeatRuns.agentId,
+      responsibleUserId: heartbeatRuns.responsibleUserId,
+      driverKind: heartbeatRuns.driverKind,
+      contextSnapshot: heartbeatRuns.contextSnapshot,
+      runnerProfileJson: heartbeatRuns.runnerProfileJson,
+    }).from(heartbeatRuns)
       .where(and(eq(heartbeatRuns.id, input.runId), eq(heartbeatRuns.companyId, input.companyId)));
     if (input.requireReassessmentSource) {
       const expected = input.requireReassessmentSource;
@@ -1843,6 +1851,60 @@ export async function commitNativeStatusDecision(input: {
       issue.lastStatusDecisionId !== input.priorDecisionId
     ) {
       throw new NativeStatusRaceError();
+    }
+    const unblockOwner = input.decision.unblockDescriptor?.owner;
+    const assessedUserId = unblockOwner && typeof unblockOwner === "object" && "userId" in unblockOwner
+      ? unblockOwner.userId : null;
+    // A board fallback is also an assessed resolution. A late API-bound
+    // human owner must invalidate it before any blocker effects are saved.
+    const boardBlocker = unblockOwner === "board" && [
+      "task_wide_blocker_bound", "current_track_blocker_waiting", "durable_dependency_blocker_bound",
+    ].includes(reasonCode);
+    if (assessedUserId || boardBlocker) {
+      try {
+        const [saved] = await tx.select({ envelope: nativeRunResults.resultJson }).from(nativeRunResults).where(and(
+          eq(nativeRunResults.id, coordinator.resultId!), eq(nativeRunResults.companyId, input.companyId),
+          eq(nativeRunResults.issueId, input.issueId), eq(nativeRunResults.runId, input.runId),
+          eq(nativeRunResults.schemaStatus, "accepted"),
+        )).limit(1).for("share", { noWait: true });
+        const owner = record(record(record(saved?.envelope).result).blocker).owner;
+        if (!saved || await nativeBlockerUserId({ db: tx as unknown as Db, companyId: input.companyId,
+          issueId: input.issueId, owner: record(owner), lockSources: true }) !== assessedUserId) {
+          throw new NativeStatusRaceError();
+        }
+        // Dependency waits can project an owner without a bind_blocker
+        // effect, so enforce the human-assignment permission here too.
+        if (assessedUserId) await assertAgentInteraction(tx, { companyId: input.companyId,
+          actorAgentId: originRun?.agentId ?? null, operation: "assign", issueId: input.issueId,
+          assigneeUserId: assessedUserId, texts: [input.decision.unblockDescriptor!.action], lock: true });
+      } catch (error) {
+        if (record(error).code === "55P03" || record(record(error).cause).code === "55P03") throw new NativeStatusRaceError();
+        throw error;
+      }
+    }
+    if (input.decision.handoffAgentId) {
+      try {
+        const handoff = await evaluateBlockerAgentHandoff(tx as unknown as Db, {
+          companyId: input.companyId,
+          issue,
+          runId: input.runId,
+          actorAgentId: originRun?.agentId ?? null,
+          responsibleUserId: originRun?.responsibleUserId ?? null,
+          driverKind: originRun?.driverKind ?? null,
+          contextSnapshot: originRun?.contextSnapshot,
+          runnerProfileJson: originRun?.runnerProfileJson,
+          targetAgentId: input.decision.handoffAgentId,
+          unblockAction: input.decision.unblockDescriptor?.action ?? "",
+          requireTaskOwner: true,
+          lockSources: true,
+        });
+        if (!handoff.allowed) throw new NativeStatusRaceError();
+      } catch (error) {
+        if (error instanceof NativeStatusRaceError || record(error).code === "55P03" || record(record(error).cause).code === "55P03") {
+          throw new NativeStatusRaceError();
+        }
+        throw error;
+      }
     }
     // Recheck under the issue lock, retaining run/proposal/document proof until
     // commit. A newer decision cannot race an earlier first-task Done assessment.
@@ -2372,6 +2434,11 @@ export async function commitNativeStatusDecision(input: {
           statusVersion: input.priorStatusVersion + 1,
           lastStatusDecisionId: decisionRow.id,
           unblockDescriptor: input.decision.unblockDescriptor,
+          // A blocker naming another agent hands it the task, so its blocker
+          // wake is delivered. Only the reporting assignee can hand it off.
+          ...(input.decision.handoffAgentId && !issue.assigneeUserId &&
+            originRun?.agentId && issue.assigneeAgentId === originRun.agentId
+            ? { assigneeAgentId: input.decision.handoffAgentId } : {}),
           actorAgentId: originRun?.agentId ?? null,
           actorUserId: null,
         },

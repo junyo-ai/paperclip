@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import type { CompanySecret, UserSecretDefinition } from "@paperclipai/shared";
+import { ANALYTICS_NO_CAPTURE_CLASS } from "@/lib/analytics/privacy";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,

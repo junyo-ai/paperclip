@@ -189,6 +189,7 @@ import {
 } from "./origins.js";
 import { withRecoveryContext } from "./status-only-context.js";
 import { getExecutionBlocker } from "../execution-blocker.js";
+import { readWorkspaceProviderFailure } from "../workspace-provider-failure.js";
 import { currentRunFailureText } from "../native-runtime/native-exact-resume-failure.js";
 import { isAutomaticRecoverySuppressedByPauseHold } from "./pause-hold-guard.js";
 import { rehomeStrandedLegacyWorkspaceTasks } from "./legacy-workspace-rehome.js";
@@ -5746,7 +5747,10 @@ export function recoveryService(
             issue,
             previousStatus: "todo",
             latestRun,
-            notice: buildNoRunningExecutionNoticeSeed({ status: "todo" }),
+            notice: buildNoRunningExecutionNoticeSeed({
+              status: "todo",
+              workspaceProviderFailure: readWorkspaceProviderFailure(latestRun?.resultJson),
+            }),
           });
           if (updated) {
             result.escalated += 1;
@@ -5789,7 +5793,10 @@ export function recoveryService(
             issue,
             previousStatus: "todo",
             latestRun,
-            notice: buildNoRunningExecutionNoticeSeed({ status: "todo" }),
+            notice: buildNoRunningExecutionNoticeSeed({
+              status: "todo",
+              workspaceProviderFailure: readWorkspaceProviderFailure(latestRun?.resultJson),
+            }),
           });
           if (updated) {
             result.escalated += 1;
@@ -6026,7 +6033,11 @@ export function recoveryService(
               issue,
               previousStatus: "in_progress",
               latestRun,
-              notice: buildNoRunningExecutionNoticeSeed({ status: "in_progress", attempts: consecutive }),
+              notice: buildNoRunningExecutionNoticeSeed({
+                status: "in_progress",
+                attempts: consecutive,
+                workspaceProviderFailure: readWorkspaceProviderFailure(latestRun?.resultJson),
+              }),
             });
             if (updated) {
               result.escalated += 1;
@@ -6084,7 +6095,11 @@ export function recoveryService(
           issue,
           previousStatus: "in_progress",
           latestRun,
-          notice: recoveryOutcome.retryExhausted ? buildNoRunningExecutionNoticeSeed({ status: "in_progress" })
+          notice: recoveryOutcome.retryExhausted
+            ? buildNoRunningExecutionNoticeSeed({
+                status: "in_progress",
+                workspaceProviderFailure: readWorkspaceProviderFailure(latestRun?.resultJson),
+              })
             : recoveryOutcome.continuationRefused ? CONTINUATION_REFUSED_NOTICE
             : nonRetryableContinuationNotice(),
         });

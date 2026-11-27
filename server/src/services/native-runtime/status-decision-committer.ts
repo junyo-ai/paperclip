@@ -856,7 +856,7 @@ async function materializeDecisionEffect(input: {
   if (effect.kind === "bind_blocker") {
     failAt("blocker_materialization", input.failpoint);
     await assertAgentInteraction(input.tx, { companyId: input.companyId, actorAgentId: input.actorAgentId,
-      operation: "assign", issueId: input.issue.id, targetAgentId: typeof effect.owner === "object" ? effect.owner.agentId : null,
+      operation: "assign", issueId: input.issue.id, targetAgentId: typeof effect.owner === "object" && "agentId" in effect.owner ? effect.owner.agentId : null,
       texts: [effect.action], lock: true });
     const [bound] = await input.tx
       .update(issues)
@@ -873,7 +873,7 @@ async function materializeDecisionEffect(input: {
       .returning({ id: issues.id });
     if (!bound) throw new Error("native_blocker_binding_not_persisted");
     let wakeId: string | null = null;
-    if (effect.owner !== "board") {
+    if (effect.owner !== "board" && "agentId" in effect.owner) {
       wakeId = await enqueueWake({
         tx: input.tx,
         originRunId: input.runId,

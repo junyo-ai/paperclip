@@ -37,7 +37,7 @@ import { dismissAutomaticCompletionReviews } from "./automatic-completion-review
 import { findSupersededExternalReviewRequests } from "./superseded-external-review-requests.js";
 import { getNativeReviewAssignment, readNativeReviewAssignmentContext } from "./native-review-participant.js";
 import { toolCallLoopContinuationKey } from "./repeated-tool-failure-guard.js";
-import { cancelStoppedRunContinuation, readPersistedNativeToolReceiptLimitStop } from "./native-tool-receipt-limit.js";
+import { cancelStoppedRunContinuation, nativeRunHasStopRequest, readPersistedNativeToolReceiptLimitStop } from "./native-tool-receipt-limit.js";
 import { isNativeEnvironmentBlocker } from "./native-environment-blocker.js";
 import { hasQueuedChatRequest } from "./first-turn-queued-input.js";
 import { conversationNativeDecision, isConversation, settleConversationTurnForRun } from "../agent-conversations.js";
@@ -1611,6 +1611,10 @@ export async function finalizeNativeRun(input: {
   const allowIncompleteContinuation = record(sourceWake?.payload).continuationIdempotencyKey !== "native-completion-incomplete";
   let supersedesAssessmentId: string | null = coordinator.assessmentId;
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    const savedStop = attempt === 0 ? run.resultJson : await input.db.select({ resultJson: heartbeatRuns.resultJson })
+      .from(heartbeatRuns).where(and(eq(heartbeatRuns.id, run.id), eq(heartbeatRuns.companyId, run.companyId)))
+      .then(rows => rows[0]?.resultJson ?? run.resultJson);
+    const stopRequested = nativeRunHasStopRequest(savedStop);
     const authoritativeIssue = await input.db
       .select()
       .from(issues)

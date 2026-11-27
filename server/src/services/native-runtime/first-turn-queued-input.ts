@@ -350,6 +350,9 @@ export async function firstTurnTakesAllQueuedComments(
     inArray(issueComments.id, input.commentIds), isNull(issueComments.deletedAt)));
   return rows.length > 0 && rows.every(row => row.eligible === true);
 }
+
+/**
+ * Whether a deferred wake carries a chat request. A chat wake keeps its own
  * delivery: the run it starts binds that request's source, so its tools act on
  * what the request asked for. `deferredWakeChatRequestSql` is the same test in SQL.
  */
@@ -381,5 +384,3 @@ export async function hasQueuedChatRequest(
   )).limit(1);
   return Boolean(wake);
 }
-
-

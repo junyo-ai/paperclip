@@ -410,6 +410,12 @@ export async function classifyNativeEvidence(input: {
         lockSources: input.lockSources,
       })
     : { kind: "unspecified" as const };
+  const ownerUserId = reported === "blocked" && typeof blocker.unblockAction === "string"
+    ? await nativeBlockerUserId({
+        db: input.db, companyId: input.companyId, issueId: input.issueId,
+        owner: record(blocker.owner), lockSources: input.lockSources,
+      })
+    : null;
 
   return {
     objectiveClaimSatisfied: claim.objectiveSatisfied === true,

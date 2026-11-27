@@ -1,4 +1,3 @@
-import { isPrpAutomaticallyContinuedBlocker } from "../../vendor/paperclip-runner/index.js";
 
 export const NATIVE_ENVIRONMENT_BLOCKER_CODE = "native_environment_blocker";
 export const NATIVE_ENVIRONMENT_BLOCKER_EXHAUSTED_CODE = "native_environment_blocker_exhausted";

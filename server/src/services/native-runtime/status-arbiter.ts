@@ -1,4 +1,5 @@
 import { COMPLETION_REVIEW_STAGE_REASON, COMPLETION_REVIEW_STAGE_REJECTED_REASON, type CompletionReviewStageEntry } from "../issue-execution-policy.js";
+import type { IssueUnblockDescriptor } from "@paperclipai/shared";
 import type { NativeEvidenceAssessment } from "./evidence-classifier.js";
 import { NATIVE_MODEL_REJECTION_MESSAGE, NATIVE_PROVIDER_CAPACITY_MAX_RETRIES, NATIVE_PROVIDER_OVERLOADED_CODE, NATIVE_PROVIDER_OVERLOADED_MESSAGE } from "./native-provider-failure.js";
 import { NATIVE_AGENT_BLOCKER_CONTINUATION_CODE, NATIVE_AGENT_BLOCKER_HANDOFF_CODE, NATIVE_AGENT_BLOCKER_MAX_CONTINUATIONS } from "./native-agent-blocker.js";
@@ -38,6 +39,7 @@ export type NativeStatusEffect =
       ownerAgentId?: string | null;
     }
   | { kind: "notify_owner"; agentId: string; reason: string }
+  | { kind: "notify_owner"; agentId: string; reason: string }
   | {
       kind: "enqueue_continuation";
       continuationKind:
@@ -52,7 +54,7 @@ export type NativeStatusEffect =
     }
   | {
       kind: "bind_blocker";
-      owner: { agentId: string } | "board";
+      owner: IssueUnblockDescriptor["owner"];
       action: string;
     }
   | { kind: "schedule_retry"; cause: string; summary: string; agentId: string }
@@ -95,7 +97,7 @@ export interface NativeStatusDecision {
   toStatus: NativeAuthoritativeIssueStatus;
   reasonCode: string | null;
   unblockDescriptor: {
-    owner: { agentId: string } | "board";
+    owner: IssueUnblockDescriptor["owner"];
     action: string;
   } | null;
   effects: NativeStatusEffect[];
